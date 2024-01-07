@@ -3,9 +3,9 @@ name: Python application
 
 on:
   push:
-    branches: [ "master", "v3" ]
+    branches: [ "main", "dev" ]
   pull_request:
-    branches: [ "master", "v3" ]
+    branches: [ "main", "dev" ]
 
 permissions:
   contents: read
@@ -30,6 +30,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install flake8 pytest
         pip install "PySide6-Fluent-Widgets[full]" -i https://pypi.org/simple/
+        pip install juliacall
     - name: Test with pytest
       run: |
         pytest
