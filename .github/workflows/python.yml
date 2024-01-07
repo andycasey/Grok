@@ -44,7 +44,7 @@ jobs:
         conda install pytest
     - name: Test with pytest
       run: |
-        $CONDA/bin/pytest
+        pytest
 
   pip:
     runs-on: ${{ matrix.os }}
