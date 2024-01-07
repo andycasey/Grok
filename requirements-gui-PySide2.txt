@@ -1,0 +1,2 @@
+PySide
+Pyside2-Fluent-Widgets[full]
