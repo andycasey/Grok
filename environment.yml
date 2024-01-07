@@ -1,0 +1,10 @@
+name: Grok
+channels:
+- defaults
+dependencies:
+- python >=3.9,<3.12
+- pip
+- astropy
+- pip:
+  - juliacall
+  - PySide6-Fluent-Widgets[full] -i https://pypi.org/simple/
