@@ -32,12 +32,15 @@ jobs:
         condarc-file: ${{ matrix.condarc-file }}
         python-version: ${{ matrix.python-version }}
         environment-file: environment.yml
+    - name: Setup Julia bridge to Korg
+      run: |
+        python setup_korg.py    
     - name: Install pytest
       run: |
         conda install pytest
     - name: Test with pytest
       run: |
-        pytest
+        $CONDA/bin/pytest
 
   pip:
     runs-on: ${{ matrix.os }}
@@ -70,7 +73,7 @@ jobs:
         pip install pytest
     - name: Test with pytest
       run: |
-        $CONDA/bin/pytest
+        pytest
 
 #pip install -r requirements-gui-${{ matrix.qt-api }}.txt
 
