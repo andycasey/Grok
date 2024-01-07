@@ -52,18 +52,24 @@ jobs:
       uses: actions/setup-python@v3
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install Conda environment
-      run: |
-        $CONDA/bin/conda env create -f environment.yml
+    - name: Setup conda environment with mambaforge
+      uses: conda-incubator/setup-miniconda@v2
+      with:
+        use-mamba: true
+        activate-environment: Grok
+        condarc-file: ${{ matrix.condarc-file }}
+        python-version: ${{ matrix.python-version }}
+        environment-file: environment.yml
+
     - name: Activate environment
       run: |
-        $CONDA/bin/conda activate Grok
+        conda activate Grok
     - name: Install pytest
       run: |
-        $CONDA/bin/conda install pytest
+        conda install pytest
     - name: Test with pytest
       run: |
-        $CONDA/bin/pytest
+        pytest
 
 #- name: Lint with flake8
 #   run: |
