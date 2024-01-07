@@ -1,0 +1,30 @@
+{
+    "Radial velocity": {
+        "Wavelength range": "8000 - 9000"
+    },
+    "Material": {
+        "AcrylicBlurRadius": 0
+    },
+    "Update": {
+        "CheckUpdateAtStartUp": false
+    },
+    "Folders": {
+        "Download": "/Users/andycasey/software/smhr/smh/app/download",
+        "LocalMusic": []
+    },
+    "MainWindow": {
+        "DpiScale": "Auto",
+        "Language": "Auto",
+        "MicaEnabled": false
+    },
+    "Initial Stellar Parameters": {
+        "Initial effective temperature": 6000
+    },
+    "QFluentWidgets": {
+        "ThemeColor": "#ff009faa",
+        "ThemeMode": "Auto"
+    },
+    "Personalization": {
+        "User name": "andycasey"
+    }
+}

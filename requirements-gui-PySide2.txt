@@ -1,2 +1,0 @@
-PySide2>=5.15.0
-Pyside2-Fluent-Widgets[full]

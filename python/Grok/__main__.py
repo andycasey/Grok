@@ -2,9 +2,10 @@
 import os
 import sys
 
-from PyQt5.QtCore import Qt, QTranslator
-from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import QApplication
+#from Qt import QtCore, QtGui, QtWidgets
+from Qt.QtCore import Qt, QTranslator
+from Qt.QtGui import QFont
+from Qt.QtWidgets import QApplication
 from qfluentwidgets import FluentTranslator
 
 from app.common.config import cfg

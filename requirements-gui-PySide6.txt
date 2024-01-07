@@ -1,1 +1,0 @@
-Pyside6-Fluent-Widgets[full]

@@ -3,6 +3,7 @@ import sys
 import os
 from enum import Enum
 
+#from Qt.Qtcore import QLocale
 from PyQt5.QtCore import QLocale
 from qfluentwidgets import (qconfig, QConfig, ConfigItem, OptionsConfigItem, BoolValidator,
                             OptionsValidator, RangeConfigItem, RangeValidator,
