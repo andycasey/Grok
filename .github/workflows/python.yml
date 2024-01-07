@@ -13,11 +13,15 @@ permissions:
 jobs:
 
   conda:
+    defaults:
+      run:
+        shell: bash -l {0}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ["3.9", "3.10", "3.11"]
+        qt-api: ["PySide6"]        
     steps:
     - uses: actions/checkout@v3
     - name: Set up Python ${{ matrix.python-version }}
