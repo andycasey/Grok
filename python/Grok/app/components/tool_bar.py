@@ -13,6 +13,8 @@ from qfluentwidgets import (
 )
 
 from ..view.gallery_interface import SeparatorWidget
+from .radial_velocity import RadialVelocityWidget
+from .continuum import ContinuumRectificationWidget
 
 from astropy.io.fits import getval
 
@@ -81,9 +83,14 @@ class ToolBar(QWidget):
                 QAction("Spectral fitting", self),
             ]
         )
-
-        self.analysisMenu.addAction(QAction("Radial velocity", self))
-        self.analysisMenu.addAction(QAction("Continuum", self))
+        action_add_radial_velocity_widget = QAction("Radial velocity", self)
+        action_add_radial_velocity_widget.triggered.connect(lambda: self.add_analysis_widget(RadialVelocityWidget, action_add_radial_velocity_widget))                    
+        self.analysisMenu.addAction(action_add_radial_velocity_widget)
+        
+        action_add_continuum_widget = QAction("Continuum", self)
+        action_add_continuum_widget.triggered.connect(lambda: self.add_analysis_widget(ContinuumRectificationWidget, action_add_continuum_widget))        
+        self.analysisMenu.addAction(action_add_continuum_widget)
+        
         self.analysisMenu.addMenu(self.stellarParameterMenu)
         self.analysisMenu.addAction(QAction("Synthesis", self))
 
@@ -96,6 +103,18 @@ class ToolBar(QWidget):
         self.buttonLayout = QHBoxLayout(self)
 
         self.__initWidget()
+        
+        
+    def add_analysis_widget(self, widget_class, action):
+        self.parent().add_analysis_widget(widget_class)
+        action.setIcon(FluentIcon.ACCEPT.qicon())
+        # Change the action to scroll to the existing component instead of creating a new one.
+        action.triggered.disconnect()
+        index = self.parent().vBoxLayout.count() - 1
+        action.triggered.connect(lambda: self.parent().verticalScrollBar().setValue(self.parent().vBoxLayout.itemAt(index).widget().y()))
+
+        
+        
 
     def __initWidget(self):
         self.setFixedHeight(138)

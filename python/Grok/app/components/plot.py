@@ -45,7 +45,7 @@ class ExcitationIonizationBalanceWidget(QWidget):
         figsize=(8, 6),
         parent=None, 
         size_policy=(QSizePolicy.Expanding, QSizePolicy.Fixed),
-        resize_interval=50
+        resize_interval=100
     ):
         super().__init__(parent)
         self.parent = parent
@@ -110,14 +110,14 @@ class ExcitationIonizationBalanceWidget(QWidget):
         if event.type() == 51:
             if event.key() == QtCore.Qt.Key_Left:
                 try:
-                    self.page_left.trigger()
+                    self.action_left.trigger()
                 except:
                     return False
                 else:
                     return True
             elif event.key() == QtCore.Qt.Key_Right:
                 try:
-                    self.page_right.trigger()
+                    self.action_right.trigger()
                 except:
                     return False
                 else:
@@ -201,14 +201,14 @@ class SinglePlotWidget(QWidget):
             })
             
             if toolbar_left_right:
-                self.page_left = Action(FluentIcon.PAGE_LEFT, "Left", self)
-                self.page_right = Action(FluentIcon.PAGE_RIGHT, "Right", self)
+                self.action_left = Action(FluentIcon.PAGE_LEFT, "Left", self)
+                self.action_right = Action(FluentIcon.PAGE_RIGHT, "Right", self)
                 toolbar.addSeparator()
-                toolbar.addAction(self.page_left)
-                toolbar.addAction(self.page_right)
+                toolbar.addAction(self.action_left)
+                toolbar.addAction(self.action_right)
                 self._key_shortcuts.update({
-                    "left": self.page_left.trigger,
-                    "right": self.page_right.trigger
+                    "left": self.action_left.trigger,
+                    "right": self.action_right.trigger
                 })
 
             self.layout.addWidget(toolbar)
@@ -231,14 +231,14 @@ class SinglePlotWidget(QWidget):
                 # Only left/right, set to align in middle
                 toolbar = CommandBar(parent=self)
                 toolbar.setFocusPolicy(QtCore.Qt.NoFocus)
-                self.page_left = Action(FluentIcon.PAGE_LEFT, "Left", self)
-                self.page_right = Action(FluentIcon.PAGE_RIGHT, "Right", self)
-                toolbar.addAction(self.page_left)
-                toolbar.addAction(self.page_right)
+                self.action_left = Action(FluentIcon.PAGE_LEFT, "Left", self)
+                self.action_right = Action(FluentIcon.PAGE_RIGHT, "Right", self)
+                toolbar.addAction(self.action_left)
+                toolbar.addAction(self.action_right)
                 self.layout.addWidget(toolbar, alignment=QtCore.Qt.AlignCenter)           
                 self._key_shortcuts.update({
-                    "left": self.page_left.trigger,
-                    "right": self.page_right.trigger
+                    "left": self.action_left.trigger,
+                    "right": self.action_right.trigger
                 })                
         
         #self.layout.addStretch(1)    

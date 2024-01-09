@@ -45,15 +45,15 @@ class QuickViewWidget(AnalysisWidget):
             plotter.figure.tight_layout()
             plotter.canvas.draw()
             current_index = index
-            plotter.page_left.setEnabled(current_index > 0)
-            plotter.page_right.setEnabled(current_index < (S - 1))
+            plotter.action_left.setEnabled(current_index > 0)
+            plotter.action_right.setEnabled(current_index < (S - 1))
             plotter.canvas.setFocus()
             # set a new nav stack so that when the user pans around on THIS order, the 'home'
             # button will take them to the original view for THIS order, not all orders
             plotter.reset_current_as_home()
                         
-        plotter.page_left.triggered.connect(lambda: update_canvas(current_index - 1))
-        plotter.page_right.triggered.connect(lambda: update_canvas(current_index + 1))
+        plotter.action_left.triggered.connect(lambda: update_canvas(current_index - 1))
+        plotter.action_right.triggered.connect(lambda: update_canvas(current_index + 1))
         
         update_canvas(current_index)
 

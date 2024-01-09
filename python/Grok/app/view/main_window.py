@@ -97,7 +97,7 @@ class MainWindow(FluentWindow):
 
     def initWindow(self):
         self.resize(960, 780)
-        self.setMinimumWidth(760)
+        self.setMinimumWidth(780)
         self.setWindowIcon(QIcon(':/gallery/images/logo.png'))
         self.setWindowTitle(NAME)
 

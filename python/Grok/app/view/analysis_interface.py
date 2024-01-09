@@ -20,7 +20,7 @@ from PyQt5.QtWidgets import (QApplication, QComboBox, QCompleter,
                              QVBoxLayout, QWidget)
 from qfluentwidgets import (Action, BodyLabel, BreadcrumbBar, CaptionLabel,
                             CardWidget, CheckableMenu, CheckBox, ComboBox,
-                            CommandBar, EditableComboBox, FlowLayout)
+                            CommandBar, EditableComboBox, FlowLayout, FluentIcon)
 from qfluentwidgets import FluentIcon as FIF
 from qfluentwidgets import (Flyout, IconWidget, InfoBarIcon, LineEdit,
                             MenuAnimationType, MenuIndicatorType,
@@ -259,90 +259,6 @@ class TopAndBottomAnalysisWidget(QWidget):
     
 
 
-class ContinuumRectificationWidget(AnalysisWidget):
-    
-    def __init__(self, session, callback=None, parent=None, stretch=0):
-        # Add buttons to bottom layout
-        super().__init__(parent=parent, session=session, title="Continuum Rectification")
-        self.callback = callback
-        
-        layout = QVBoxLayout(self.widget)
-        layout.setContentsMargins(0, 0, 0, 0)  
-
-        from continuum import BaseContinuumModel, load_basis_vectors
-        
-        '''
-        model_wavelength = 10 * (10**(2.57671464 + np.arange(167283) * 2.25855074e-06))
-        basis_vectors = load_basis_vectors("H.pkl.gz", wavelength.size)
-
-        model = BaseContinuumModel(model_wavelength, basis_vectors, deg=3)
-
-        index = 30
-        #(v_rel, continuum, template_wavelength, template_flux, p_opt) = model.fit_relative_velocity(wavelength[index], flux[index], ivar[index])
-
-        #print(v_rel)
-        
-        print(continuum)
-        index = 28
-        '''
-        
-        figure = SinglePlotWidget(
-            xlabel=r"Wavelength [$\mathrm{\AA}$]",
-            ylabel="Rectified flux",
-            figsize=(100, 4), 
-            toolbar=True, 
-            toolbar_left_right=True
-        )
-        current_index = 0
-        
-        line, = figure.ax.plot([], [])
-        
-        S = len(session.spectra)
-        
-        def update_canvas(index):
-            nonlocal current_index
-            if index < 0 or index > (S - 1):
-                return
-            wavelength, flux, ivar, meta = session.spectra[index]
-            line.set_data(wavelength, flux / np.nanmedian(flux))
-            figure.ax.set_xlim(wavelength[[0, -1]])
-            figure.ax.set_ylim(0, 1.2)
-            figure.canvas.draw()
-            current_index = index
-            figure.page_left.setEnabled(current_index > 0)
-            figure.page_right.setEnabled(current_index < (S - 1))
-            figure.canvas.setFocus()
-            
-        
-        figure.page_left.triggered.connect(lambda: update_canvas(current_index - 1))
-        figure.page_right.triggered.connect(lambda: update_canvas(current_index + 1))
-        
-        update_canvas(current_index)
-
-        layout.addWidget(figure)                
-        
-        self.button_do_not_rectify = PushButton("No continuum normalization")
-        self.button_rectify = PrimaryPushButton("Continuum normalize all spectra")
-        
-        self.button_do_not_rectify.clicked.connect(self.button_do_not_rectify_clicked)
-        self.button_rectify.clicked.connect(self.button_rectify_clicked)
-        self.bottomLayout.addWidget(self.button_do_not_rectify)
-        self.bottomLayout.addStretch(1)
-        self.bottomLayout.addWidget(self.button_rectify)
-
-        self.widget.setParent(self.card)
-        self.widget.show()
-        
-        return None
-    
-    def button_do_not_rectify_clicked(self):
-        if self.callback is not None:
-            self.callback()
-        
-    def button_rectify_clicked(self):
-        if self.callback is not None:
-            self.callback()
-            
 
 
 
@@ -705,160 +621,7 @@ class FloatLineEdit(LineEdit):
         return False
 
     
-class RadialVelocityWidget(AnalysisWidget):
-    
-    
-    def __init__(self, session, callback=None, parent=None, stretch=0):
-        
-        # Add buttons to bottom layout
-        super().__init__(parent=parent, session=session, title="Radial Velocity")
-        self.session = session
-        self.callback = callback
-        '''
-        layout = QVBoxLayout(self.widget)
-        layout.addWidget(QLabel("Test"))
-        
-        
-        self.button_do_not_rectify = PushButton("No continuum normalization")
-        self.button_rectify = PrimaryPushButton("Rectify")
-        self.bottomLayout.addWidget(self.button_do_not_rectify)
-        self.bottomLayout.addStretch(1)
-        self.bottomLayout.addWidget(self.button_rectify)
-        '''
-        
-        # Get the order closest to the wavelength range.
-        index = session._get_closest_spectrum_index(8500)                
-        wavelength, flux, *_ = session.spectra[index]
-        
-        
-        layout = QVBoxLayout(self.widget)
-        layout.setContentsMargins(0, 0, 0, 0)  
-        
-        #index = 28
-        plot = SinglePlotWidget(
-            x=wavelength,
-            y=flux / np.nanmedian(flux),            
-            xlabel=r"Wavelength [$\mathrm{\AA}$]",
-            ylabel="Rectified flux",
-            figsize=(100, 2), toolbar=False, toolbar_left_right=False)
-        plot.ax.set_xlim(wavelength[[0, -1]])
-        
-        layout.addWidget(plot)
 
-        
-        
-        rv_opt_layout = QHBoxLayout()
-        rv_opt_layout.setSpacing(30)
-        
-        lhs_layout = QVBoxLayout()
-        middle_layout = QVBoxLayout()
-        rhs_layout = QVBoxLayout()
-        
-        
-        wavelength_layout = QHBoxLayout()
-        wavelength_layout.addWidget(QLabel("Wavelength range:"))
-        wavelength_combo = ComboBox()
-        wavelength_combo.addItems([
-            "8000 - 9000 Å"
-        ])
-        wavelength_layout.addWidget(wavelength_combo)
-
-
-        template_layout = QHBoxLayout()
-        template_combo = ComboBox()
-        template_combo.setPlaceholderText("Auto")
-        template_combo.addItems([
-            "Auto",
-            "Select from file",
-            "Synthesise spectrum"
-        ])
-        for combo in (wavelength_combo, template_combo):
-            combo.setFixedWidth(180)
-        template_layout.addWidget(QLabel("Template:"))
-        template_layout.addWidget(template_combo)
-
-        lhs_layout.addLayout(wavelength_layout)
-        lhs_layout.addLayout(template_layout)
-
-    
-        # Middle layout
-        continuum_layout = QHBoxLayout()
-        continuum_layout.setAlignment(Qt.AlignTop)
-        continuum_layout.addWidget(QLabel("Continuum:"))
-        continuum_combo = ComboBox()
-        continuum_combo.setPlaceholderText("Sinusoids")
-        continuum_combo.addItems([
-            "Sinusoids",
-            "Polynomial",
-            "Spline",
-        ])
-        continuum_layout.addWidget(continuum_combo)        
-        middle_layout.addLayout(continuum_layout)
-        
-
-        rv_opt_layout.addLayout(lhs_layout)
-        rv_opt_layout.addLayout(middle_layout)
-        rv_opt_layout.addStretch(1)
-        rv_opt_layout.addLayout(rhs_layout)    
-        
-        layout.addLayout(rv_opt_layout)
-                
-        self.button_no_shift = PushButton("Spectrum is already at rest")
-        self.button_no_shift.clicked.connect(self.on_no_shift_button_pushed)
-        self.button_measure = PushButton("Measure")
-        self.button_measure.clicked.connect(self.on_shift_button_clicked)
-        self.button_measure_and_shift = PrimaryPushButton("Measure and shift")
-        self.button_measure_and_shift.clicked.connect(self.on_measure_and_shift_button_clicked)
-        self.bottomLayout.addWidget(self.button_no_shift)
-        self.bottomLayout.addStretch(1)
-        self.bottomLayout.addWidget(QLabel("Relative velocity:"))
-        
-        self.v_rel = LineEdit(self)
-        self.v_rel.setValidator(QDoubleValidator(-1000, 1000, 3, self))
-        self.v_rel.setText("0.0")
-        self.v_rel.setFixedWidth(80)
-        self.v_rel.setAlignment(Qt.AlignHCenter)
-        
-        self.v_rel.textEdited.connect(self.on_v_rel_changed)
-        
-        self.bottomLayout.addWidget(self.v_rel)
-        self.bottomLayout.addWidget(QLabel("km/s"))
-        self.bottomLayout.addWidget(SeparatorWidget())
-        self.bottomLayout.addWidget(self.button_measure)
-        self.bottomLayout.addWidget(self.button_measure_and_shift)
-        
-        self.button_measure.setVisible(False)
-        #measure_layout = QHBoxLayout()
-        #measure_layout.addStretch(1)
-        #measure_layout.addWidget(PushButton("Measure relative velocity"), 0, Qt.AlignRight)
-        #layout.addLayout(measure_layout)
-                        
-        return None    
-    
-    def on_no_shift_button_pushed(self):
-        self.v_rel.setText("0.0")
-        if self.callback is not None:
-            self.callback()
-            
-    def on_measure_and_shift_button_clicked(self):
-        print("on measure clicked")
-        if self.callback is not None:
-            self.callback()
-            
-    def on_shift_button_clicked(self):
-        print("on shift clicked")
-        if self.callback is not None:
-            self.callback()
-    
-    def on_v_rel_changed(self):
-        
-        state = self.v_rel.validator().validate(self.v_rel.text(), 0)[0]
-        if state == QDoubleValidator.Acceptable:    
-            self.button_measure.setVisible(True)
-            self.button_measure_and_shift.setText("Shift")
-        else:
-            print("warning")
-        print("edited")
         
 
 
@@ -899,8 +662,8 @@ class SessionInterface(ScrollArea):
             
 
         # Radial velocity stuff
-        self.continuum = ContinuumRectificationWidget(session, callback=continuum_callback, parent=self)
-        self.continuum.setVisible(initial_visibility)
+        #self.continuum = ContinuumRectificationWidget(session, callback=continuum_callback, parent=self)
+        #self.continuum.setVisible(initial_visibility)
         
         
         def rv_callback():
@@ -919,6 +682,22 @@ class SessionInterface(ScrollArea):
         
         # add stellar parameter analysis? --> differential, etc.
 
+    def add_analysis_widget(self, widget_class):#, from_action=None):
+        widget = widget_class(self.session)
+        
+        # not sure that this is the right thing to do here, but without the
+        # visible False/True and the processEvents, it doesn't scroll to the new widget
+        widget.setVisible(False)
+        self.vBoxLayout.addWidget(widget, 0, Qt.AlignTop)
+        widget.setVisible(True)
+                
+        QApplication.processEvents()
+        
+        w = self.vBoxLayout.itemAt(self.vBoxLayout.count() - 1).widget()        
+        self.verticalScrollBar().setValue(w.y())
+        #if from_action is not None:
+        #    from_action.setIcon(FluentIcon.DATE_TIME.qicon())
+        
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
