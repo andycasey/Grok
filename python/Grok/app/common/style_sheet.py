@@ -20,4 +20,4 @@ class StyleSheet(StyleSheetBase, Enum):
     def path(self, theme=Theme.AUTO):
         theme = qconfig.theme if theme == Theme.AUTO else theme
         #return f":/gallery/qss/{theme.value.lower()}/{self.value}.qss"
-        return f"/Users/andycasey/software/smhr/smh/app/resource/qss/{theme.value.lower()}/{self.value}.qss"
+        return f"/Users/andycasey/research/Grok/python/Grok/app/resource/qss/{theme.value.lower()}/{self.value}.qss"

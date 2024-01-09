@@ -65,16 +65,16 @@ class Config(QConfig):
 
 
 YEAR = 2023
-NAME = "Spectroscopy Made Harder"
-ACRONYM = "SMHR"
-FILENAME_SUFFIX = "smh"
-AUTHOR = "SMHR Collaboration"
+NAME = "Grok"
+ACRONYM = "Grok"
+FILENAME_SUFFIX = "grok"
+AUTHOR = "Grok Collaboration"
 VERSION = __version__
-HELP_URL = "https://github.com/andycasey/smhr"
+HELP_URL = "https://github.com/andycasey/Grok"
 REPO_URL = HELP_URL
 EXAMPLE_URL = HELP_URL
-FEEDBACK_URL = "https://github.com/andycasey/smhr/issues"
-RELEASE_URL = "https://github.com/andycasey/smhr/releases/latest"
+FEEDBACK_URL = "https://github.com/andycasey/Grok/issues"
+RELEASE_URL = "https://github.com/andycasey/Grok/releases/latest"
 SUPPORT_URL = FEEDBACK_URL
 
 

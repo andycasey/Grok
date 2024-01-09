@@ -1,42 +1,50 @@
 # coding:utf-8
 import time
 from typing import List
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
+from astropy.io.fits import getval
 from PyQt5 import QtCore
-from PyQt5.QtCore import QEvent, Qt, QUrl, QObject, pyqtSignal, QItemSelectionModel
-from PyQt5.QtGui import QColor, QDesktopServices, QIcon, QPainter, QPen, QDoubleValidator, QIntValidator
-from PyQt5.QtWidgets import (QApplication, QCompleter, QFileDialog, QFrame,
-                             QGridLayout,
-                             QHBoxLayout, QLabel, QSizePolicy, QStackedWidget, 
-                             QVBoxLayout, QWidget, QTableWidgetItem, QHeaderView, QTableView)
+# import requried things
+from PyQt5.QtCore import (QEvent, QItemSelectionModel, QModelIndex, QObject,
+                          Qt, QUrl, QVariant, pyqtSignal, pyqtSlot)
+from PyQt5.QtGui import (QColor, QDesktopServices, QDoubleValidator,
+                         QIcon, QIntValidator, QPainter, QPalette, QPen)
+from PyQt5.QtWidgets import (QApplication, QComboBox, QCompleter,
+                             QFileDialog, QFrame, QGridLayout, QHBoxLayout,
+                             QHeaderView, QItemDelegate, QLabel,
+                             QListWidget, QListWidgetItem, QSizePolicy,
+                             QStackedWidget, QStyle, QStyleOptionViewItem,
+                             QTableView, QTableWidget, QTableWidgetItem,
+                             QVBoxLayout, QWidget)
 from qfluentwidgets import (Action, BodyLabel, BreadcrumbBar, CaptionLabel,
-                            CardWidget, CheckBox, ComboBox, CommandBar,
-                            EditableComboBox, FlowLayout, Flyout)
-from qfluentwidgets import (IconWidget, LineEdit, Pivot, PrimaryPushButton, InfoBarIcon,
+                            CardWidget, CheckableMenu, CheckBox, ComboBox,
+                            CommandBar, EditableComboBox, FlowLayout)
+from qfluentwidgets import FluentIcon as FIF
+from qfluentwidgets import (Flyout, IconWidget, InfoBarIcon, LineEdit,
+                            MenuAnimationType, MenuIndicatorType,
+                            MenuItemDelegate, Pivot, PrimaryDropDownPushButton,
+                            PrimaryPushButton, PrimarySplitPushButton,
                             PushButton, RoundMenu, ScrollArea, SearchLineEdit,
-                            SmoothScrollArea, StrongBodyLabel, TabBar,
-                            TabCloseButtonDisplayMode, TextWrap, Theme,
-                            TitleLabel, ToolButton, ToolTipFilter, TableWidget, SmoothScrollDelegate,
-                            applyThemeColor, isDarkTheme, qrouter, toggleTheme)
-from qfluentwidgets import TableWidget, isDarkTheme, setTheme, Theme, TableView, TableItemDelegate, setCustomStyleSheet
+                            SmoothScrollArea, SmoothScrollDelegate,
+                            StrongBodyLabel, TabBar, TabCloseButtonDisplayMode,
+                            TableItemDelegate, TableView, TableWidget,
+                            TextWrap, Theme, TitleLabel, ToolButton,
+                            ToolTipFilter, TransparentDropDownPushButton,
+                            applyThemeColor, isDarkTheme, qrouter,
+                            setCustomStyleSheet, setTheme, toggleTheme)
+from session import Session
 
-from qfluentwidgets import TransparentDropDownPushButton, PrimaryDropDownPushButton, PrimarySplitPushButton
-
-from ..common.config import ACRONYM, FILENAME_SUFFIX, EXAMPLE_URL, FEEDBACK_URL, HELP_URL, cfg
+from ..common.config import (ACRONYM, EXAMPLE_URL, FEEDBACK_URL,
+                             FILENAME_SUFFIX, HELP_URL, cfg)
 from ..common.icon import Icon
 from ..common.style_sheet import StyleSheet
+from ..components.plot import (ExcitationIonizationBalanceWidget,
+                               SinglePlotWidget)
 from ..components.tool_bar import ToolBar
-
-from ..components.plot import SinglePlotWidget, ExcitationIonizationBalanceWidget
 from ..view.gallery_interface import SeparatorWidget
 
-from qfluentwidgets import RoundMenu, setTheme, Theme, Action, MenuAnimationType, MenuItemDelegate, CheckableMenu, MenuIndicatorType
-from qfluentwidgets import FluentIcon as FIF
-
-
-from session import Session
-from astropy.io.fits import getval
 
 class ExampleCard2(QWidget):
     """ Example card """
@@ -350,7 +358,7 @@ class ContinuumRectificationWidget(AnalysisWidget):
         layout = QVBoxLayout(self.widget)
         layout.setContentsMargins(0, 0, 0, 0)  
 
-        from continuum import load_basis_vectors, BaseContinuumModel
+        from continuum import BaseContinuumModel, load_basis_vectors
         
         '''
         model_wavelength = 10 * (10**(2.57671464 + np.arange(167283) * 2.25855074e-06))
@@ -425,12 +433,8 @@ class ContinuumRectificationWidget(AnalysisWidget):
             self.callback()
             
 
-from PyQt5.QtCore import QModelIndex, Qt, QVariant
 
-from PyQt5.QtGui import QPalette
-    
-from PyQt5.QtWidgets import QApplication, QStyleOptionViewItem, QTableWidget, QTableWidgetItem, QWidget, QHBoxLayout
-    
+
 class CustomTableItemDelegate(TableItemDelegate):
     """ Custom table item delegate """
 
@@ -539,11 +543,7 @@ class TransitionsTableModel(QtCore.QAbstractTableModel):
             flags |= QtCore.Qt.ItemIsEditable
         return flags
 
-# import requried things
-from PyQt5.QtCore import pyqtSlot
-from PyQt5.QtWidgets import QItemDelegate, QComboBox, QListWidget, QListWidgetItem, QStyleOptionViewItem, QStyle, QHeaderView
 
-from qfluentwidgets import FluentIcon as FIF
 class ComboDelegate(QItemDelegate):
     editorItems=['Gaussian', 'Voight','Lorentzian']
     #height = 25
@@ -1004,6 +1004,11 @@ class SessionInterface(ScrollArea):
         
         
         # add stellar parameter analysis? --> differential, etc.
+
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self.toolBar.resize(self.width(), self.toolBar.height())
         
         
 
