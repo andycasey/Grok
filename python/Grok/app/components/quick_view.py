@@ -83,3 +83,21 @@ class QuickViewWidget(AnalysisWidget):
         if self.callback is not None:
             self.callback()
             
+
+
+    
+'''
+if __name__ == '__main__':
+    # enable dpi scale
+    import sys
+    from Qt import QtCore
+    QtCore.QApplication.setHighDpiScaleFactorRoundingPolicy(QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+    QtCore.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
+    QtCore.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps)
+
+    app = QtCore.QApplication(sys.argv)
+    w = QuickViewWidget()
+    w.resize(600, 600)
+    w.show()
+    app.exec_()    
+'''    

@@ -1,23 +1,15 @@
-
-import threading
 import numpy as np
 from collections import namedtuple
 from weakref import WeakKeyDictionary
-from PyQt5.QtCore import Qt, QSize, QTimer, pyqtSignal, QObject, QEvent
-from PyQt5.QtGui import QResizeEvent
-from PyQt5.QtWidgets import QWidget, QStackedWidget, QVBoxLayout, QLabel, QHBoxLayout, QFrame, QSizePolicy
+from Qt import QtCore
+from Qt.QtWidgets import QApplication, QWidget, QVBoxLayout, QSizePolicy
+from qfluentwidgets import Action, FluentIcon, CommandBar
 
-from PyQt5.QtWidgets import QApplication, QFrame, QVBoxLayout, QLabel, QWidget, QHBoxLayout
-from qfluentwidgets import (FluentIcon, IconWidget, FlowLayout, isDarkTheme,
-                            Theme, applyThemeColor, SmoothScrollArea, SearchLineEdit, StrongBodyLabel,
-                            BodyLabel, CommandBar)
-from qfluentwidgets import RoundMenu, Action
-from time import time
-
-# Remember to import matplotlib after Qt.
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvas
+from matplotlib.backend_bases import _Mode, MouseButton, tools, cbook
+
 
 # TODO: Import qconfig from qfluentwidgets and when the theme changes, update the matplotlib style file
 plt.style.use({
@@ -61,7 +53,7 @@ class ExcitationIonizationBalanceWidget(QWidget):
         self.figure = Figure(figsize=figsize)
         self.canvas = FigureCanvas(self.figure)
         self.canvas.setParent(self)
-        self.canvas.setFocusPolicy(Qt.WheelFocus)
+        self.canvas.setFocusPolicy(QtCore.Qt.WheelFocus)
         self.canvas.setFocus()
         self.canvas.setSizePolicy(*size_policy)
         
@@ -91,7 +83,7 @@ class ExcitationIonizationBalanceWidget(QWidget):
             self.resizeTimer
         except:
             
-            self.resizeTimer = QTimer(self)
+            self.resizeTimer = QtCore.QTimer(self)
             self.resizeTimer.setSingleShot(True)
             self.resizeTimer.timeout.connect(self.afterResizeEvent)
         finally:
@@ -116,14 +108,14 @@ class ExcitationIonizationBalanceWidget(QWidget):
             None
             
         if event.type() == 51:
-            if event.key() == Qt.Key_Left:
+            if event.key() == QtCore.Qt.Key_Left:
                 try:
                     self.page_left.trigger()
                 except:
                     return False
                 else:
                     return True
-            elif event.key() == Qt.Key_Right:
+            elif event.key() == QtCore.Qt.Key_Right:
                 try:
                     self.page_right.trigger()
                 except:
@@ -143,7 +135,6 @@ class ExcitationIonizationBalanceWidget(QWidget):
         return False
         
 
-from matplotlib.backend_bases import NavigationToolbar2, _Mode, MouseButton, tools, cbook
     
 class SinglePlotWidget(QWidget):    
     
@@ -162,11 +153,13 @@ class SinglePlotWidget(QWidget):
     ):
         super().__init__(parent)
         self.parent = parent
+        self.has_toolbar = toolbar
+        self.has_toolbar_left_right = toolbar_left_right
         self.resize_interval = resize_interval
         self.figure = Figure(figsize=figsize)
         self.canvas = FigureCanvas(self.figure)
         self.canvas.setParent(self)
-        self.canvas.setFocusPolicy(Qt.WheelFocus)
+        self.canvas.setFocusPolicy(QtCore.Qt.WheelFocus)
         self.canvas.setFocus()
         self.canvas.setSizePolicy(*size_policy)
         
@@ -182,10 +175,11 @@ class SinglePlotWidget(QWidget):
         
         self.layout = QVBoxLayout(self)
         self.layout.addWidget(self.canvas)
-                        
+        self._key_shortcuts = {}
+        
         if toolbar:
             toolbar = CommandBar(parent=self)
-            toolbar.setFocusPolicy(Qt.NoFocus)
+            toolbar.setFocusPolicy(QtCore.Qt.NoFocus)
             
             self.action_home = Action(FluentIcon.HOME, "Home", self)
             self.action_zoom = Action(FluentIcon.ZOOM, "Zoom", self)
@@ -200,12 +194,23 @@ class SinglePlotWidget(QWidget):
             toolbar.addAction(self.action_zoom)
             toolbar.addAction(self.action_pan)
         
+            self._key_shortcuts.update({
+                "p": self.action_pan.trigger,
+                "z": self.action_zoom.trigger,
+                "h": self.action_home.trigger,
+            })
+            
             if toolbar_left_right:
                 self.page_left = Action(FluentIcon.PAGE_LEFT, "Left", self)
                 self.page_right = Action(FluentIcon.PAGE_RIGHT, "Right", self)
                 toolbar.addSeparator()
                 toolbar.addAction(self.page_left)
                 toolbar.addAction(self.page_right)
+                self._key_shortcuts.update({
+                    "left": self.page_left.trigger,
+                    "right": self.page_right.trigger
+                })
+
             self.layout.addWidget(toolbar)
         
             # necessary to enable panning/zoom    
@@ -225,26 +230,29 @@ class SinglePlotWidget(QWidget):
             if toolbar_left_right:
                 # Only left/right, set to align in middle
                 toolbar = CommandBar(parent=self)
-                toolbar.setFocusPolicy(Qt.NoFocus)
+                toolbar.setFocusPolicy(QtCore.Qt.NoFocus)
                 self.page_left = Action(FluentIcon.PAGE_LEFT, "Left", self)
                 self.page_right = Action(FluentIcon.PAGE_RIGHT, "Right", self)
                 toolbar.addAction(self.page_left)
                 toolbar.addAction(self.page_right)
-                self.layout.addWidget(toolbar, alignment=Qt.AlignCenter)           
+                self.layout.addWidget(toolbar, alignment=QtCore.Qt.AlignCenter)           
+                self._key_shortcuts.update({
+                    "left": self.page_left.trigger,
+                    "right": self.page_right.trigger
+                })                
         
         #self.layout.addStretch(1)    
-        self.installEventFilter(self)
+        #self.installEventFilter(self)
 
     def reset_current_as_home(self):
         self._nav_stack = cbook._Stack()
         self.push_current()        
 
     def _key_press_handler(self, event):
-        if event.key in ("left", "right"):
-            try:
-                dict(left=self.page_left, right=self.page_right)[event.key].trigger()
-            except:
-                None
+        try:
+            self._key_shortcuts[event.key.lower()]()
+        except:
+            None
 
     def _zoom_pan_handler(self, event):
         if self.mode == _Mode.PAN:
@@ -349,12 +357,10 @@ class SinglePlotWidget(QWidget):
         Update the cursor after a mouse move event or a tool (de)activation.
         """
         if self.mode and event.inaxes and event.inaxes.get_navigate():
-            if (self.mode == _Mode.ZOOM
-                    and self._last_cursor != tools.Cursors.SELECT_REGION):
+            if (self.mode == _Mode.ZOOM and self._last_cursor != tools.Cursors.SELECT_REGION):
                 self.canvas.set_cursor(tools.Cursors.SELECT_REGION)
                 self._last_cursor = tools.Cursors.SELECT_REGION
-            elif (self.mode == _Mode.PAN
-                  and self._last_cursor != tools.Cursors.MOVE):
+            elif (self.mode == _Mode.PAN and self._last_cursor != tools.Cursors.MOVE):
                 self.canvas.set_cursor(tools.Cursors.MOVE)
                 self._last_cursor = tools.Cursors.MOVE
         elif self._last_cursor != tools.Cursors.POINTER:
@@ -498,7 +504,7 @@ class SinglePlotWidget(QWidget):
             self.resizeTimer
         except:
             
-            self.resizeTimer = QTimer(self)
+            self.resizeTimer = QtCore.QTimer(self)
             self.resizeTimer.setSingleShot(True)
             self.resizeTimer.timeout.connect(self.afterResizeEvent)
         finally:
@@ -516,51 +522,17 @@ class SinglePlotWidget(QWidget):
             None
         return None
 
-        
-    def eventFilter(self, widget, event):
-        try:
-            print(f"plot widget {widget} {event.type()} {event.key()} {event.text()}")
-        except:
-            None
-            
-                    
-        if event.type() == 51:
-            if event.key() == Qt.Key_Left:
-                try:
-                    self.page_left.trigger()
-                except:
-                    return False
-                else:
-                    return True
-            elif event.key() == Qt.Key_Right:
-                try:
-                    self.page_right.trigger()
-                except:
-                    return False
-                else:
-                    return True
-                
-                                
 
-        '''
-        if event.type() == QEvent.KeyPress:
-            text = event.text()
-            if event.modifiers():
-                text = event.keyCombination().key().name.decode(encoding="utf-8")
-            print(f"{event} {event.type}: {text}")
-        '''            
-        return False
-        
+
     
 if __name__ == '__main__':
     # enable dpi scale
-    from PyQt5.QtCore import QModelIndex, Qt, QRect, QSize
     import sys
-    QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
-    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
+    QtCore.QApplication.setHighDpiScaleFactorRoundingPolicy(QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+    QtCore.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
+    QtCore.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps)
 
-    app = QApplication(sys.argv)
+    app = QtCore.QApplication(sys.argv)
     w = SinglePlotWidget()
     w.resize(600, 600)
     w.show()
