@@ -2,12 +2,8 @@
 # coding:utf-8
 
 import numpy as np
-from Qt import QtCore
-from Qt.QtGui import QDoubleValidator
-from Qt.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout)
-from qfluentwidgets import (ComboBox, LineEdit, PrimaryPushButton, PushButton)
-
-from ..view.gallery_interface import SeparatorWidget
+from Qt.QtWidgets import QVBoxLayout
+from qfluentwidgets import PrimaryPushButton, PushButton
 
 from .analysis import AnalysisWidget
 from .plot import SinglePlotWidget
@@ -22,7 +18,6 @@ class ContinuumRectificationWidget(AnalysisWidget):
         
         layout = QVBoxLayout(self.widget)
         layout.setContentsMargins(0, 0, 0, 0)  
-
         
         figure = SinglePlotWidget(
             xlabel=r"Wavelength [$\mathrm{\AA}$]",
