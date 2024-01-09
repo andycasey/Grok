@@ -40,7 +40,7 @@ class Session:
         print(self, hash(self), "loading spectra")
         spectra = []
         for input_path in self.input_paths:            
-            wavelength, flux, ivar, meta = Spectrum1D.read_fits_multispec(input_path, flux_ext=6, ivar_ext=3)
+            wavelength, flux, ivar, meta = Spectrum1D.read_fits_multispec(input_path)
             for i in range(len(wavelength)):
                 spectra.append([wavelength[i], flux[i], ivar[i], meta])
         return spectra

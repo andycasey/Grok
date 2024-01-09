@@ -43,6 +43,8 @@ from ..common.style_sheet import StyleSheet
 from ..components.plot import (ExcitationIonizationBalanceWidget,
                                SinglePlotWidget)
 from ..components.tool_bar import ToolBar
+from ..components.analysis import AnalysisWidget
+from ..components.quick_view import QuickViewWidget
 from ..view.gallery_interface import SeparatorWidget
 
 
@@ -160,98 +162,7 @@ class KeyPressFilter(QObject):
         return False
     
 
-class AnalysisWidget(QWidget):
-    
-    def __init__(self, session, title=None, parent=None, stretch=0):
-        super().__init__(parent=parent)
-        self.session = session
-        self.stretch = stretch
-        self.widget = QWidget(self)
 
-        self.titleLabel = StrongBodyLabel(title, self)
-        self.card = QFrame(self)
-
-        self.sourceWidget = QFrame(self.card)
-        
-        self.vBoxLayout = QVBoxLayout(self)
-        self.cardLayout = QVBoxLayout(self.card)
-        self.topLayout = QHBoxLayout()
-        self.bottomLayout = QHBoxLayout(self.sourceWidget)
-
-        self.__initWidget()    
-        
-    def __initWidget(self):
-        #self.linkIcon.setFixedSize(16, 16)
-        self.__initLayout()
-
-        #self.sourceWidget.setCursor(Qt.PointingHandCursor)
-        self.sourceWidget.installEventFilter(self)
-
-        self.card.setObjectName('card')
-        self.sourceWidget.setObjectName('sourceWidget')
-
-    def __initLayout(self):
-        self.vBoxLayout.setSizeConstraint(QVBoxLayout.SetMinimumSize)
-        self.cardLayout.setSizeConstraint(QVBoxLayout.SetMinimumSize)
-        self.topLayout.setSizeConstraint(QHBoxLayout.SetMinimumSize)
-
-        self.vBoxLayout.setSpacing(12)
-        self.vBoxLayout.setContentsMargins(0, 0, 0, 0)
-        self.topLayout.setContentsMargins(12, 12, 12, 12)
-        self.bottomLayout.setContentsMargins(18, 18, 18, 18)
-        self.cardLayout.setContentsMargins(0, 0, 0, 0)
-
-        self.vBoxLayout.addWidget(self.titleLabel, 0, Qt.AlignTop)
-        self.vBoxLayout.addWidget(self.card, 0, Qt.AlignTop)
-        self.vBoxLayout.setAlignment(Qt.AlignTop)
-
-        self.cardLayout.setSpacing(0)
-        self.cardLayout.setAlignment(Qt.AlignTop)
-        self.cardLayout.addLayout(self.topLayout, 0)
-        self.cardLayout.addWidget(self.sourceWidget, 0, Qt.AlignBottom)
-
-        self.topLayout.addWidget(self.widget)
-        if self.stretch == 0:
-            self.topLayout.addStretch(1)
-
-
-        '''
-        #self.bottomLayout.addWidget(self.sourcePathLabel, 0, Qt.AlignLeft)
-        #self.bottomLayout.addStretch(1)
-        #self.bottomLayout.addWidget(self.linkIcon, 0, Qt.AlignRight)
-        
-        if self.leftButtonText is not None:
-            leftButton = PushButton(self.leftButtonText)
-            #leftButton.clicked.connect(self.enable_norm)
-            self.bottomLayout.addWidget(leftButton, 0, Qt.AlignLeft)
-            
-        self.bottomLayout.addStretch(1)
-        if self.rightButtonText is not None:
-            rightButton = PrimaryPushButton(self.rightButtonText, self)
-            #rightButton.clicked.connect(self.enable_norm)
-            
-            self.bottomLayout.addWidget(rightButton, 0, Qt.AlignRight)
-
-        '''
-        self.bottomLayout.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        
-        self.widget.setParent(self.card)
-        self.widget.show()
-        
-        
-    def eventFilter(self, widget, event):
-        try:
-            print(f"ok: {event.type()} {event.key()} {event.text()}")
-        except:
-            None
-        '''
-        if event.type() == QEvent.KeyPress:
-            text = event.text()
-            if event.modifiers():
-                text = event.keyCombination().key().name.decode(encoding="utf-8")
-            print(f"{event} {event.type}: {text}")
-        '''            
-        return False    
 
 class TopAndBottomAnalysisWidget(QWidget):
     
@@ -995,12 +906,15 @@ class SessionInterface(ScrollArea):
         def rv_callback():
             self.continuum.setVisible(True)
         
-        card = RadialVelocityWidget(session, callback=rv_callback, parent=self)
-        self.vBoxLayout.addWidget(card, 0, Qt.AlignTop)
+        qv = QuickViewWidget(session, parent=self)
+        self.vBoxLayout.addWidget(qv)
+        
+        #card = RadialVelocityWidget(session, callback=rv_callback, parent=self)
+        #self.vBoxLayout.addWidget(card, 0, Qt.AlignTop)
         
         # Continuum normalization
 
-        self.vBoxLayout.addWidget(self.continuum, 0, Qt.AlignTop)
+        #self.vBoxLayout.addWidget(self.continuum, 0, Qt.AlignTop)
         
         
         # add stellar parameter analysis? --> differential, etc.
