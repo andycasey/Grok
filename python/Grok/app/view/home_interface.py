@@ -1,9 +1,9 @@
 # coding:utf-8
-from Qt.QtCore import Qt, QRectF
-from Qt.QtGui import QPixmap, QPainter, QColor, QBrush, QPainterPath, QLinearGradient
-from Qt.QtWidgets import QWidget, QVBoxLayout, QLabel
+from PyQt5.QtCore import Qt, QRectF
+from PyQt5.QtGui import QPixmap, QPainter, QColor, QBrush, QPainterPath, QLinearGradient
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QHBoxLayout
 
-from qfluentwidgets import ScrollArea, isDarkTheme, FluentIcon
+from qfluentwidgets import ScrollArea, isDarkTheme, FluentIcon, PushButton
 from ..common.config import cfg, NAME, HELP_URL, REPO_URL, EXAMPLE_URL, FEEDBACK_URL
 from ..common.icon import Icon, FluentIconBase
 from ..components.link_card import LinkCardView
@@ -101,14 +101,37 @@ class HomeInterface(ScrollArea):
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
+        self.parent = parent
         self.banner = BannerWidget(self)
         self.view = QWidget(self)
         self.vBoxLayout = QVBoxLayout(self.view)
 
         self.__initWidget()
         
-        self.show_korg_updates()
+        button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(40, 0, 0, 0)
+        self.button_pre_compile_korg = PushButton("Pre-compile Korg")
+        self.button_pre_compile_korg.clicked.connect(self.pre_compile_korg)
         
+        button_layout.addWidget(self.button_pre_compile_korg)
+        button_layout.addStretch(1)
+        self.vBoxLayout.addLayout(button_layout)
+        
+        self.show_korg_updates()
+    
+    def pre_compile_korg(self):
+        def callback(variable_name, response):
+            print(f"got response: {response}")
+            f = self.parent.korg_process._parse_linelist(response, variable_name)            
+            print(f"response is {f}")
+            
+        foo = self.parent.korg_process.read_linelist(
+            "/Users/andycasey/Downloads/linelist_mm.txt", 
+            format="moog",
+            callback=callback
+        )
+    
+    
 
     def __initWidget(self):
         self.view.setObjectName('view')

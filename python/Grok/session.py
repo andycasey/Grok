@@ -1,11 +1,11 @@
 import os
 import numpy as np
-from typing import Union, Sequence
+from typing import Union, Sequence, Type, Optional
 from functools import cached_property
 
 
 from specutils import Spectrum1D
-
+from synthesis import BaseKorg, Korg
 
 # Move to utilities:
         
@@ -25,15 +25,27 @@ def get_closest_spectrum_index(session, wavelength):
     return index
 
 
+
+
 class Session:
     
     def __init__(
         self,
-        input_paths: Sequence[Union[str, bytes, os.PathLike]]
+        input_paths: Sequence[Union[str, bytes, os.PathLike]],
+        synthesis: Optional[Type[BaseKorg]] = Korg
     ):
-        self.input_paths = expand_input_paths(input_paths)        
+        self.input_paths = expand_input_paths(input_paths)
+        self._synthesis = synthesis
         return None
-        
+    
+    @cached_property
+    def synthesis(self):
+        # If ._synthesis is a class, instantiate it
+        if isinstance(self._synthesis, type): 
+            return self._synthesis()
+        else:
+            return self._synthesis
+    
     
     @cached_property
     def spectra(self):
@@ -51,3 +63,42 @@ class Session:
         
         
 
+    # Curve-of-growth analysis
+    def cog_read_linelist(self, line_list_path, format="vald"):
+        self.cog_linelist = self.synthesis.read_linelist(
+            line_list_path, 
+            format=format,
+        )
+        return self.cog_linelist
+    
+    
+    def cog_fit_profiles(self):
+        # just assign EWs to everything in the .linelist        
+        ...
+        
+    
+    def cog_interpolate_atmosphere(self, Teff, logg, metals_H, alpha_H):
+        self.cog_A_X = self.synthesis.format_A_X(metals_H, alpha_H)
+        self.cog_atm = self.synthesis.interpolate_marcs(
+            Teff, logg, self.cog_A_X
+        )
+        
+        
+    def cog_ews_to_abundances(self, ews):
+        self.synthesis.ews_to_abundances(
+            self.cog_atm,
+            self.cog_linelist,
+            self.cog_A_X,
+            ews
+        )
+        
+    
+    
+    def cog_solve_stellar_parameters(
+        self,
+        x0=None,
+        callback=None
+    ):
+        ...
+    
+    

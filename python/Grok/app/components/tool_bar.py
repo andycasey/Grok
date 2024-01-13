@@ -15,6 +15,7 @@ from qfluentwidgets import (
 from ..view.gallery_interface import SeparatorWidget
 from .radial_velocity import RadialVelocityWidget
 from .continuum import ContinuumRectificationWidget
+from .curve_of_growth import StellarParametersCOGWidget
 
 from astropy.io.fits import getval
 
@@ -75,10 +76,13 @@ class ToolBar(QWidget):
 
         self.analysisMenu = RoundMenu(parent=self)
 
+        action_add_cog_widget = QAction("Curve-of-growth", self)
+        action_add_cog_widget.triggered.connect(lambda: self.add_analysis_widget(StellarParametersCOGWidget, action_add_cog_widget))
+
         self.stellarParameterMenu = RoundMenu("Stellar parameters", parent=self)
         self.stellarParameterMenu.addActions(
             [
-                QAction("Curve-of-growth", self),
+                action_add_cog_widget,
                 QAction("Differential analysis", self),
                 QAction("Spectral fitting", self),
             ]

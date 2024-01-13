@@ -1,7 +1,10 @@
 # coding: utf-8
-from PyQt5.QtCore import QUrl, QSize, QObject, QEvent
+import os
+import numpy as np
+from threading import Thread
+from PyQt5.QtCore import QUrl, QSize, QObject, QEvent, QProcess
 from PyQt5.QtGui import QIcon, QDesktopServices, QKeyEvent
-from PyQt5.QtWidgets import QApplication, QFileDialog
+from PyQt5.QtWidgets import QApplication
 
 from qfluentwidgets import (Action, NavigationAvatarWidget, NavigationItemPosition, MessageBox, FluentWindow,
                             SplashScreen, FolderListDialog, NavigationWidget)
@@ -20,6 +23,7 @@ from ..common import resource
 from qfluentwidgets import (PushButton, TeachingTip, TeachingTipTailPosition, InfoBarIcon, setTheme, Theme,
                             TeachingTipView, FlyoutViewBase, BodyLabel, PrimaryPushButton, PopupTeachingTip)
 
+from astropy.table import Table
 
 class KeyPressFilter(QObject):
 
@@ -37,8 +41,7 @@ class KeyPressFilter(QObject):
         '''            
         return False
     
-
-
+from synthesis.korg import QKorgProcess
 
 class MainWindow(FluentWindow):
 
@@ -46,6 +49,8 @@ class MainWindow(FluentWindow):
         super().__init__()
         self.initWindow()
 
+        self.korg_process = QKorgProcess()
+        
         # create sub interface
         self.homeInterface = HomeInterface(self)
         self.analysisInterface = AnalysisInterface(self)
@@ -60,8 +65,8 @@ class MainWindow(FluentWindow):
         self.initNavigation()
         self.splashScreen.finish()
                 
-        self.installEventFilter(KeyPressFilter(parent=self))        
-        
+        self.installEventFilter(KeyPressFilter(parent=self))   
+
 
     def connectSignalToSlot(self):
         signalBus.micaEnableChanged.connect(self.setMicaEffectEnabled)
@@ -94,6 +99,8 @@ class MainWindow(FluentWindow):
         )
         self.addSubInterface(
             self.settingInterface, FIF.SETTING, self.tr('Settings'), NavigationItemPosition.BOTTOM)
+
+
 
     def initWindow(self):
         self.resize(960, 780)

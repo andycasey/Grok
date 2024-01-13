@@ -2,7 +2,7 @@ import numpy as np
 from collections import namedtuple
 from weakref import WeakKeyDictionary
 from Qt import QtCore
-from Qt.QtWidgets import QApplication, QWidget, QVBoxLayout, QSizePolicy
+from Qt.QtWidgets import QApplication, QWidget, QVBoxLayout, QSizePolicy, QHBoxLayout
 from qfluentwidgets import Action, FluentIcon, CommandBar
 
 import matplotlib.pyplot as plt
@@ -32,118 +32,11 @@ plt.style.use({
     "ytick.color": "white",
     "ytick.labelcolor": "white"
 })        
-        
-        
-class ExcitationIonizationBalanceWidget(QWidget):    
+
+class BasePlotWidget(QWidget):    
     
     def __init__(
         self, 
-        x=None,
-        y=None,
-        xlabel=None,
-        ylabel=None,
-        figsize=(8, 6),
-        parent=None, 
-        size_policy=(QSizePolicy.Expanding, QSizePolicy.Fixed),
-        resize_interval=100
-    ):
-        super().__init__(parent)
-        self.parent = parent
-        self.resize_interval = resize_interval
-        self.figure = Figure(figsize=figsize)
-        self.canvas = FigureCanvas(self.figure)
-        self.canvas.setParent(self)
-        self.canvas.setFocusPolicy(QtCore.Qt.WheelFocus)
-        self.canvas.setFocus()
-        self.canvas.setSizePolicy(*size_policy)
-        
-        self.canvas.mpl_connect("figure_enter_event", self._focus)
-                    
-        self.axes = self.canvas.figure.subplots(3, 1)
-        self.figure.tight_layout()
-        self.figure.canvas.draw()
-        
-        self.layout = QVBoxLayout(self)
-        self.layout.addWidget(self.canvas)
-
-        #self.layout.addStretch(1)    
-        self.installEventFilter(self)
-        return None
-    
-    def _focus(self, event):
-        """ Set the focus of the canvas. """
-        self.canvas.setFocus()    
-        
-        
-        
-    
-    def resizeEvent(self, e):
-        # Matplotlib wants to redraw the canvas while we are resizing, makes it all yucky
-        try:
-            self.resizeTimer
-        except:
-            
-            self.resizeTimer = QtCore.QTimer(self)
-            self.resizeTimer.setSingleShot(True)
-            self.resizeTimer.timeout.connect(self.afterResizeEvent)
-        finally:
-            self.resizeTimer.start(self.resize_interval)
-                
-        return None        
-
-    def afterResizeEvent(self):        
-        self.figure.tight_layout()
-        self.figure.canvas.draw()
-        try:
-            self.resizeTimer.stop()
-            del self.resizeTimer
-        except:
-            None
-        return None
-    
-    def eventFilter(self, widget, event):
-        try:
-            print(f"plot widget {widget} {event.type()} {event.key()} {event.text()}")
-        except:
-            None
-            
-        if event.type() == 51:
-            if event.key() == QtCore.Qt.Key_Left:
-                try:
-                    self.action_left.trigger()
-                except:
-                    return False
-                else:
-                    return True
-            elif event.key() == QtCore.Qt.Key_Right:
-                try:
-                    self.action_right.trigger()
-                except:
-                    return False
-                else:
-                    return True
-                
-                                
-
-        '''
-        if event.type() == QEvent.KeyPress:
-            text = event.text()
-            if event.modifiers():
-                text = event.keyCombination().key().name.decode(encoding="utf-8")
-            print(f"{event} {event.type}: {text}")
-        '''            
-        return False
-        
-
-    
-class SinglePlotWidget(QWidget):    
-    
-    def __init__(
-        self, 
-        x=None,
-        y=None,
-        xlabel=None,
-        ylabel=None,
         figsize=(8, 2),
         parent=None, 
         size_policy=(QSizePolicy.Expanding, QSizePolicy.Fixed),
@@ -165,11 +58,6 @@ class SinglePlotWidget(QWidget):
         
         self.canvas.mpl_connect("figure_enter_event", self._focus)
                     
-        self.ax = self.canvas.figure.subplots()
-        if x is not None and y is not None:
-            self.ax.plot(x, y)
-        self.ax.set_xlabel(xlabel)
-        self.ax.set_ylabel(ylabel)
         self.figure.tight_layout()
         self.figure.canvas.draw()
         
@@ -240,7 +128,6 @@ class SinglePlotWidget(QWidget):
                     "left": self.action_left.trigger,
                     "right": self.action_right.trigger
                 })                
-        
         #self.layout.addStretch(1)    
         #self.installEventFilter(self)
 
@@ -521,6 +408,30 @@ class SinglePlotWidget(QWidget):
         except:
             None
         return None
+
+
+class SinglePlotWidget(BasePlotWidget):
+    
+    def __init__(
+        self, 
+        x=None,
+        y=None,
+        xlabel=None,
+        ylabel=None,
+        **kwargs
+    ):
+        super().__init__(**kwargs)
+        self.ax = self.canvas.figure.subplots()
+        if x is not None and y is not None:
+            self.ax.plot(x, y)
+        self.ax.set_xlabel(xlabel)
+        self.ax.set_ylabel(ylabel)
+        self.figure.tight_layout()
+        self.figure.canvas.draw()
+        return None        
+        
+
+    
 
 
 
