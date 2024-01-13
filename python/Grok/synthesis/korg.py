@@ -9,6 +9,7 @@ import asyncio
 import re
 from random import choices
 from string import ascii_lowercase
+from time import sleep
 
 try:
     from Qt.QtCore import QProcess
@@ -60,13 +61,17 @@ class Korg(BaseKorg):
         self.jl = jl
         return None
 
+LINE_PATTERN = re.compile(
+    "\((?P<wl>[-\d\.]+(e-?\d+)?), (?P<log_gf>[-\d\.]+(e-?\d+)?), (?P<species_repr>\w+\sI+), (?P<E_lower>[-\d\.]+(e[-+]\d+)?), (?P<gamma_rad>[-\d\.]+(e-?\d+)?), (?P<gamma_stark>[-\d\.]+(e-?\d+)?), (?P<vdW>[-\d\.]+(e-?\d+)?)\)"
+)
+
 class BaseKorgProcess(BaseKorg):
-    LINE_PATTERN = re.compile(
-        "\((?P<wl>[-\d\.]+(e-?\d+)?), (?P<log_gf>[-\d\.]+(e-?\d+)?), (?P<species_repr>\w+\sI+), (?P<E_lower>[-\d\.]+(e[-+]\d+)?), (?P<gamma_rad>[-\d\.]+(e-?\d+)?), (?P<gamma_stark>[-\d\.]+(e-?\d+)?), (?P<vdW>[-\d\.]+(e-?\d+)?)\)"
-    )
+    pass
+    
+    
 
 class QKorgProcess(QProcess, BaseKorgProcess):
-    
+        
     def __init__(self, **kwargs):
         super(QKorgProcess, self).__init__(**kwargs)
         # get current file path
@@ -86,7 +91,7 @@ class QKorgProcess(QProcess, BaseKorgProcess):
         self.stderr = []
         self.callbacks = {}
         return None    
-        
+
     def _handle_finished(self):
         print(f"{self} finished")
         
@@ -111,8 +116,8 @@ class QKorgProcess(QProcess, BaseKorgProcess):
         else:
             r = self.callbacks.pop(command, None)
             if r is not None:
-                variable_name, callback = r
-                callback(variable_name, response)
+                callback, variable_name = r
+                callback(response, variable_name)
         
     
     def assign_variable_name(self, variable_name=None, prefix="", k=12, **kwargs):
@@ -125,54 +130,68 @@ class QKorgProcess(QProcess, BaseKorgProcess):
                 return variable_name
 
 
-    def eval(self, command):
+    def eval(self, command, variable_name=None, **kwargs):
         N = len(self.stdout)
+        if variable_name is None:
+            variable_name = self.assign_variable_name(**kwargs)
+        command = f"{variable_name} = {command}"
         self.write((f"{command}\n").encode("utf8"))
+        self.waitForReadyRead() # critically important to have this
         while True:
             try:
                 for line in self.stdout[N:]:
                     if line.startswith(f"{command}>>>"):
                         command, response = self.stdout[-1].split(">>>", 1)
-                        return response
+                        return (response, variable_name)
             except:
                 continue
     
     
-    def async_eval(self, command, callback, variable_name):
-        self.callbacks[command] = (variable_name, callback)
+    def async_eval(self, command, callback, variable_name=None, **kwargs):
+        if variable_name is None:
+            variable_name = self.assign_variable_name(**kwargs)
+        
+        self.callbacks[command] = (callback, variable_name)
         self.write((f"{command}\n").encode("utf8"))
         return None
     
-    def air_to_vacuum(self, v):
-        return float(self.eval(f"Korg.air_to_vacuum({v})"))
+    def air_to_vacuum(self, v) -> float:
+        response, _ = self.eval(f"Korg.air_to_vacuum({v})")
+        return float(response)
     
-    def read_linelist(self, path, format, callback, **kwargs):        
-        variable_name = self.assign_variable_name(**kwargs)
-        command = f"{variable_name} = Korg.read_linelist(\"{path}\", format=\"{format}\")"
-        return self.async_eval(command, callback, variable_name)
-        
     
-    def _parse_linelist(self, response, variable_name):
-        linelist = LineList(julia_variable_name=variable_name)
-        for match in re.finditer(self.LINE_PATTERN, response):
-            linelist.append(
-                Line(
-                    wl=float(match.group("wl")),
-                    log_gf=float(match.group("log_gf")),
-                    species=Species(
-                        formula=match.group("species_repr").split()[0],
-                        charge=match.group("species_repr").count("I"),
-                    ),
-                    E_lower=float(match.group("E_lower")),
-                    gamma_rad=float(match.group("gamma_rad")),
-                    gamma_stark=float(match.group("gamma_stark")),
-                    vdW=float(match.group("vdW")),
-                )
-            )
-        return linelist            
-        
+    def read_linelist(self, path, format="vald"):
+        response, variable_name = self.eval(f"Korg.read_linelist(\"{path}\", format=\"{format}\")")
+        return _parse_linelist(response, variable_name)
 
+    def async_read_linelist(self, path, format="vald", callback=None):
+        def outer_callback(response, variable_name):
+            return callback(_parse_linelist(response, variable_name))
+        self.async_eval(f"Korg.read_linelist(\"{path}\", format=\"{format}\")", outer_callback)
+        return None
+
+
+def _parse_linelist(response, variable_name):
+    linelist = LineList(julia_variable_name=variable_name)
+    for match in re.finditer(LINE_PATTERN, response):
+        linelist.append(
+            Line(
+                wl=float(match.group("wl")),
+                log_gf=float(match.group("log_gf")),
+                species=Species(
+                    formula=match.group("species_repr").split()[0],
+                    charge=match.group("species_repr").count("I"),
+                ),
+                E_lower=float(match.group("E_lower")),
+                gamma_rad=float(match.group("gamma_rad")),
+                gamma_stark=float(match.group("gamma_stark")),
+                vdW=float(match.group("vdW")),
+            )
+        )
+    return linelist            
     
+
+
 
 def enqueue_stdout(out, queue, callback):
     for line in iter(out.readline, b''):
