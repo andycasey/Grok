@@ -185,16 +185,21 @@ class SessionTabsInterface(QWidget):
 
         self.tabBar.setCloseButtonDisplayMode(TabCloseButtonDisplayMode.ON_HOVER)
 
-        session = Session([
-            "/Users/andycasey/Downloads/hd122563blue_multi.fits",
-            "/Users/andycasey/Downloads/hd122563red_multi.fits"
-        ])
+        session = Session(
+            [
+                "/Users/andycasey/Downloads/hd122563blue_multi.fits",
+                "/Users/andycasey/Downloads/hd122563red_multi.fits"
+            ],
+            #synthesis=self.parent.parent.korg_process
+        )
 
         self.myInterface = SessionInterface(session, self)        
         self.addMySubInterface(self.myInterface, 'myInterface', 'HD 122563')
 
         qrouter.setDefaultRouteKey(
-            self.stackedWidget, self.myInterface.objectName())
+            self.stackedWidget, 
+            self.myInterface.objectName()
+        )
         
         
         
@@ -248,7 +253,10 @@ class SessionTabsInterface(QWidget):
         )
         if filenames:            
             
-            session = Session(filenames)
+            session = Session(
+                filenames, 
+                #synthesis=self.parent.parent.korg_process
+            )
             
             # Get a suggested name.
             try:

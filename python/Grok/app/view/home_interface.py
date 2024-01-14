@@ -120,17 +120,39 @@ class HomeInterface(ScrollArea):
         self.show_korg_updates()
     
     def pre_compile_korg(self):
-        def callback(variable_name, response):
-            print(f"got response: {response}")
-            f = self.parent.korg_process._parse_linelist(response, variable_name)            
-            print(f"response is {f}")
-            
-        foo = self.parent.korg_process.read_linelist(
+        
+        '''
+        self.cog_line_list = self.parent.korg_process.read_linelist(
             "/Users/andycasey/Downloads/linelist_mm.txt", 
             format="moog",
-            callback=callback
         )
-    
+        print(f"got cog line list: {self.cog_line_list}")
+        print(f"OK DONE")
+        
+        def my_callback(ll):
+            print(f"got a ll with {len(ll)} entries: {ll[0]}")
+        
+        self.parent.korg_process.async_read_linelist(
+            "/Users/andycasey/Downloads/linelist_mm.txt", 
+            format="moog",
+            callback=my_callback            
+        )
+        '''
+        
+        '''
+        
+        ll = self.parent.korg_process.read_linelist(
+            "/Users/andycasey/research/Grok/python/Grok/Melendez_et_al_Fe.moog", 
+            format="moog",
+        )  
+        A_X = self.parent.korg_process.format_A_X(0.0, 0.0)
+        atm = self.parent.korg_process.interpolate_marcs(5777, 4.4)
+        import numpy as np
+        ews = list(np.loadtxt("/Users/andycasey/research/Grok/python/Grok/Melendez_et_al_Fe.moog", usecols=(5, ), skiprows=1))
+        foo = self.parent.korg_process.ews_to_abundances(atm, ll, A_X, ews)
+        '''
+        #self.parent.korg_process.format_A_X(0, 0))
+        #print(f"got foo: {foo}")
     
 
     def __initWidget(self):

@@ -64,10 +64,11 @@ class Session:
         
 
     # Curve-of-growth analysis
-    def cog_read_linelist(self, line_list_path, format="vald"):
+    def cog_read_linelist(self, line_list_path, format="vald", **kwargs):            
         self.cog_linelist = self.synthesis.read_linelist(
             line_list_path, 
             format=format,
+            **kwargs
         )
         return self.cog_linelist
     
@@ -79,26 +80,40 @@ class Session:
     
     def cog_interpolate_atmosphere(self, Teff, logg, metals_H, alpha_H):
         self.cog_A_X = self.synthesis.format_A_X(metals_H, alpha_H)
+
         self.cog_atm = self.synthesis.interpolate_marcs(
             Teff, logg, self.cog_A_X
         )
         
         
-    def cog_ews_to_abundances(self, ews):
-        self.synthesis.ews_to_abundances(
+    def cog_ews_to_abundances(self, ews, **kwargs):
+        return self.synthesis.ews_to_abundances(
             self.cog_atm,
             self.cog_linelist,
             self.cog_A_X,
-            ews
+            ews,
+            **kwargs
         )
         
     
     
     def cog_solve_stellar_parameters(
         self,
-        x0=None,
-        callback=None
+        ews,
+        Teff0=5000.0, 
+        logg0=3.5, 
+        vmic0=1.0, 
+        metallicity0=0.0, 
+        **kwargs
     ):
-        ...
+        return self.synthesis.ews_to_stellar_parameters(
+            self.cog_linelist, 
+            ews, 
+            Teff0=Teff0,
+            logg0=logg0,
+            vmic0=vmic0,
+            metallicity0=metallicity0,
+            **kwargs
+        )
     
     

@@ -1,2 +1,2 @@
 
-from .korg import BaseKorg, Korg, QKorgProcess, KorgProcess
+from .korg import BaseKorg, Korg, QKorgProcess

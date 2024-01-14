@@ -7,6 +7,7 @@ import time
 from typing import List
 
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import numpy as np
 from astropy.io.fits import getval
 from PyQt5 import QtCore
@@ -282,16 +283,8 @@ class StellarParametersCOGWidget(AnalysisWidget):
     def __init__(self, session=None, callback=None, parent=None):
         super().__init__(parent=parent, session=session, title="Stellar Parameters")
         self.parent = parent
-        print(f"parent: {self.parent}")
         layout = QHBoxLayout(self.widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        
-        #worker = Worker(self.session, line_list, ews, Teff0, logg0, vmic0, metallicity0, callback=lambda *args: print(f"callback: {args}"))
-        #thread = QThread()
-        #thread.started.connect(worker.process)
-        #thread.start()
-
-        
+        layout.setContentsMargins(0, 0, 0, 0)    
         
         self.tableView = TableView(self)        
 
@@ -331,21 +324,11 @@ class StellarParametersCOGWidget(AnalysisWidget):
         transitions_button_layout = QHBoxLayout()
         transitions_button_layout.addWidget(button_atomic_line_list)
         transitions_button_layout.addStretch(1)
-        #transitions_button_layout.setContentsMargins(0, 20, 0, 20)
         
         left_layout = QVBoxLayout()
         left_layout.addLayout(transitions_button_layout)
         left_layout.addWidget(self.tableView)
 
-        #transitions_layout = QHBoxLayout()
-        #transitions_layout.addLayout(left_layout)
-        #transitions_layout.addWidget(plotter)
-        #layout.addLayout(left_layout, 0, 0)
-        #layout.addWidget(plotter, 0, 1)
-        
-        
-        
-        #layout.addLayout(transitions_layout)
         
         self.line_edit_teff = LineEdit(self)
         self.line_edit_teff.setValidator(QIntValidator(2_500, 10_000, self))
@@ -395,15 +378,18 @@ class StellarParametersCOGWidget(AnalysisWidget):
         param_button_layout.addStretch(1)
         
         push_button_solve = PrimarySplitPushButton("Solve stellar parameters")
+                
+        self.actions_hold_stellar_parameter_constant = [
+            Action("Hold effective temperature constant"),
+            Action("Hold surface gravity constant"),
+            Action("Hold metallicity constant"),
+            Action("Hold microturbulence constant"),
+        ]
+        for action in self.actions_hold_stellar_parameter_constant:
+            action.setCheckable(True)
         
-        #menu = RoundMenu()
         menu = CheckableMenu(parent=self, indicatorType=MenuIndicatorType.CHECK)
-        menu.addAction(Action("Hold effective temperature constant"))
-        menu.addAction(Action("Hold surface gravity constant"))
-        menu.addAction(Action("Hold metallicity constant"))
-        menu.addAction(Action("Hold microturbulence constant"))
-        for i in range(3):            
-            menu.actions()[i].setCheckable(True)
+        menu.addActions(self.actions_hold_stellar_parameter_constant)
                 
         push_button_solve.setFlyout(menu)
         push_button_solve.clicked.connect(self.solve_stellar_parameters)
@@ -423,8 +409,24 @@ class StellarParametersCOGWidget(AnalysisWidget):
         plot_layout.setContentsMargins(0, 30, 0, 0)
         self.excitation_ionization_plot = ExcitationIonizationBalanceWidget(parent=self)
         
-        self._scatter_line_abundances = self.excitation_ionization_plot.axes[1].scatter([], [])
-        
+        self._excitation_scatter = self.excitation_ionization_plot.axes[1].scatter(
+            [], [],
+            edgecolor="k",
+            lw=0.5,
+        )
+        self._excitation_mean = self.excitation_ionization_plot.axes[1].plot(
+            [-100, 100],
+            [np.nan, np.nan],
+            lw=0.5, ls=":"
+        )
+        self._rew_scatter = self.excitation_ionization_plot.axes[2].scatter(
+            [], [], edgecolor="k", lw=0.5, c="#FFFFFF", 
+        )
+        self._rew_mean = self.excitation_ionization_plot.axes[2].plot(
+            [-100, 100],
+            [np.nan, np.nan],
+            lw=0.5, ls=":", c="#FFFFFF", # TODO: don't set color here, use from theme
+        )        
         
         plot_layout.addWidget(self.excitation_ionization_plot)
         layout.addLayout(plot_layout)
@@ -439,11 +441,6 @@ class StellarParametersCOGWidget(AnalysisWidget):
         
         return None
     
-    #def worker_update(self, *args):
-    #    print(f"worker update: {args}")
-    @property
-    def korg_worker(self):
-        return self.parent.parent.parent.parent.korg_worker
     
     def solve_stellar_parameters(self):
         
@@ -452,53 +449,145 @@ class StellarParametersCOGWidget(AnalysisWidget):
         metallicity0 = float(self.line_edit_feh.text())
         vmic0 = float(self.line_edit_v_micro.text())
         
-
-        # line list, ews, initial value
-        '''
-        indices = np.argsort([ea.wl for ea in self.line_list])
-        line_list, ews, E_lower = ([], [], [])
-        for index in indices:
-            line_list.append(self.line_list[index])
-            ews.append(self.ews[index])
-            E_lower.append(self.line_list[index].E_lower)
-        '''
         
-        #self._scatter_line_abundances.set_offsets(np.array([E_lower, np.nan * np.ones_like(E_lower)]).T)
-        '''
-        def callback(params, residuals, line_abundances):
-            #print(f"callback: {args}, {kwargs}")
-            print(params, residuals, line_abundances)
+        self.session.cog_read_linelist(
+            "/Users/andycasey/research/Grok/python/Grok/Melendez_et_al_Fe.moog.sorted", 
+            format="moog",
+        )
+        
+        self.session.cog_interpolate_atmosphere(Teff0, logg0, metallicity0, metallicity0)
+        
+        ews = list(np.loadtxt("/Users/andycasey/research/Grok/python/Grok/Melendez_et_al_Fe.moog.sorted", usecols=(5, ), skiprows=1))
+    
+        E_lower = [l.E_lower for l in self.session.cog_linelist]
+        REW = [np.log10(ew/(l.wl * 1e11)) for ew, l in zip(ews, self.session.cog_linelist)]
             
-            teff, logg, vmic, m_h = params
-            self.line_edit_teff.setText(f"{teff:,.0}")
-            self.line_edit_logg.setText(f"{logg:.3f}")
-            self.line_edit_v_micro.setText(f"{vmic:.3f}")
-            self.line_edit_feh.setText(f"{m_h:.3f}")
-            
-            self._scatter_line_abundances.set_offsets(np.array([E_lower, line_abundances]).T)
-            self.excitation_ionization_plot.canvas.draw()
+        # set colors of points based on species
+        self._excitation_scatter.set_offsets(np.array([E_lower, np.nan * np.ones_like(E_lower)]).T)
+        self._rew_scatter.set_offsets(np.array([REW, np.nan * np.ones_like(E_lower)]).T) 
+        
+        vmin, vmax = (0, 1)
+        n = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+        cmap = mpl.colors.LinearSegmentedColormap.from_list(
+            "",
+            ["tab:blue", "tab:orange"]#, "tab:red", "tab:green"]
+        )
+        m = mpl.cm.ScalarMappable(norm=n, cmap=cmap)
+        
+        colors = m.to_rgba([l.species.charge for l in self.session.cog_linelist])
+        for scat in (self._excitation_scatter, self._rew_scatter):
+            scat.set_facecolor(colors)
+            scat.set_clim(vmin=vmin, vmax=vmax)
+        
+        self.excitation_ionization_plot.axes[1].set_xlim(get_limits(E_lower))
+        self.excitation_ionization_plot.axes[2].set_xlim(get_limits(REW))
+        self.excitation_ionization_plot.canvas.draw()
+
+        self._ylim_ptp = None
+                
+        
+        kwds = dict(callback=self.update_excitation_ionization_axes)
+        
+        # Move this logic to the session call.
+        
+        max_step_sizes = [1000.0, 1.0, 0.3, 0.5]
+        any_held_constant = False
+        for i, action in enumerate(self.actions_hold_stellar_parameter_constant):
+            if action.isChecked():
+                max_step_sizes[i] = 0
+                any_held_constant = True
+                
+        if any_held_constant:
+            kwds["max_step_sizes"] = max_step_sizes
         
         foo = self.session.cog_solve_stellar_parameters(
-            line_list,
             ews,
             Teff0=Teff0,
             logg0=logg0,
-            metallicity0=metallicity0,
             vmic0=vmic0,
-            callback=callback
+            metallicity0=metallicity0,
+            **kwds
         )
-        '''
+        print(f"foo: {foo}")
+        
+        
+    def update_stellar_parameter_line_edits(self, teff, logg, vmic, m_h):
+        self.line_edit_teff.setText(f"{teff:,.0f}")
+        self.line_edit_logg.setText(f"{logg:.3f}")
+        self.line_edit_v_micro.setText(f"{vmic:.3f}")
+        self.line_edit_feh.setText(f"{m_h:.3f}")
+                
+    
+        
+    def update_excitation_ionization_axes(self, params, residuals, line_abundances):
+        print(params, residuals)#, line_abundances)
+        
+        teff, logg, vmic, m_h = params
+        self.line_edit_teff.setText(f"{teff:,.0f}")
+        self.line_edit_logg.setText(f"{logg:.3f}")
+        self.line_edit_v_micro.setText(f"{vmic:.3f}")
+        self.line_edit_feh.setText(f"{m_h:.3f}")
+        
+        ylim = get_limits(line_abundances)
+        if self._ylim_ptp is not None:
+            ylim_mean = np.mean(ylim)
+            edge = 0.5 * np.ptp(self._ylim_ptp)
+            ylim = (ylim_mean - edge, ylim_mean + edge) 
+        else:
+            self._ylim_ptp = ylim
+        for ax in self.excitation_ionization_plot.axes[1:]:
+            ax.set_ylim(ylim)     
+        
+        mean = np.nanmean(line_abundances)
+        self._excitation_mean[0].set_ydata([mean, mean])
+        self._rew_mean[0].set_ydata([mean, mean])
 
-        self.korg_worker.start_work(Teff0, logg0, metallicity0, vmic0)        
-        print("dn her")
-        
-        
-        
+        '''
+        # Crude animation (should do this when QKorgProcess is in use)
+        if np.any(np.isfinite(self.line_abundances)):
+            print("STEPPING")
+            step = 10
+            dx = (np.array(line_abundances) - np.array(self.line_abundances)) / step
+            for i in range(step):
+                y = self.line_abundances + i * dx
+                self._excitation_scatter.set_offsets(np.array([E_lower, y]).T)
+                self._rew_scatter.set_offsets(np.array([REW, y]).T)
+                self.excitation_ionization_plot.canvas.draw()
+                QApplication.processEvents()
+            from time import sleep
+            sleep(3)                    
+        else:
+        ''' 
+        x = self._excitation_scatter.get_offsets().T[0]
+        self._excitation_scatter.set_offsets(np.array([x, line_abundances]).T)
+        x = self._rew_scatter.get_offsets().T[0]
+        self._rew_scatter.set_offsets(np.array([x, line_abundances]).T)
+        #(np.array([REW, line_abundances]).T)
+        self.excitation_ionization_plot.canvas.draw()
+        QApplication.processEvents()                    
+
+    
+    def get_current_stellar_parameters(self):    
+        Teff = float(self.line_edit_teff.text().replace(",", ""))
+        logg = float(self.line_edit_logg.text())
+        metallicity = float(self.line_edit_feh.text())
+        vmic = float(self.line_edit_v_micro.text())   
+        return (Teff, logg, metallicity, vmic)
+
     
     def compute_line_abundances(self):
-        #self.table_model._data["use"]
+    
+        Teff0, logg0, metallicity0, vmic0 = self.get_current_stellar_parameters()
         
-        raise a
+        self.session.cog_interpolate_atmosphere(Teff0, logg0, metallicity0, metallicity0)
+        
+        ews = list(np.loadtxt("/Users/andycasey/research/Grok/python/Grok/Melendez_et_al_Fe.moog.sorted", usecols=(5, ), skiprows=1))
+        abundances = self.session.cog_ews_to_abundances(ews, vmic=vmic0)
+        
+        self.update_excitation_ionization_axes((Teff0, logg0, vmic0, metallicity0), None, abundances)
+            
+        # update figure
+        
     
     
     def resizeEvent(self, e):
@@ -511,62 +600,29 @@ class StellarParametersCOGWidget(AnalysisWidget):
             self, 
             caption="Select atomic line list", 
             directory="", 
-            filter="VALD (*);;Kurucz (*);;MOOG (*);;TurboSpectrum (*)"
+            # TODO: get filter order from app config
+            filter="MOOG (*);;VALD (*);;Kurucz (*);;TurboSpectrum (*)"
         )
-        print(filenames, selected_filter)
-        if filenames:
-            '''
-            print("Loading via Korg")
-            # TODO:
-            from synthesis.Korg import read_linelist
-            format = selected_filter.split("(")[0]
-            # TODO: DONT DO THIS, THIS IS LOADING 
-            linelist = read_linelist(filenames[0], format=format)
-            '''
-            linelist = Table.read(filenames[0], format="ascii.cds")
+        if filenames:            
+            linelist = self.session.cog_read_linelist(
+                filenames[0], 
+                format=selected_filter.split("(")[0].lower().strip()
+            )
             
-            # convert to recarray for transitions table
-            periodic_table = """H                                                  He
-                                Li Be                               B  C  N  O  F  Ne
-                                Na Mg                               Al Si P  S  Cl Ar
-                                K  Ca Sc Ti V  Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr
-                                Rb Sr Y  Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I  Xe
-                                Cs Ba Lu Hf Ta W  Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn
-                                Fr Ra Lr Rf"""
-
-            lanthanoids    =   "La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb"
-            actinoids      =   "Ac Th Pa U  Np Pu Am Cm Bk Cf Es Fm Md No"
-
-            periodic_table = periodic_table.replace(" Ba ", " Ba " + lanthanoids + " ") \
-                .replace(" Ra ", " Ra " + actinoids + " ").split()
-            del actinoids, lanthanoids
-            
-            #from synthesis.Korg import jl
-            
+            # Create recarray view for the table view 
             rows = []
-            self.ews = []
-            self.line_list = []
             for line in linelist:
-                element = periodic_table[int(line["Ion"]) - 1]
-                charge = "I" * int(10 * (line["Ion"] - int(line["Ion"])) + 1)
-                species = f"{element} {charge}"
-                rows.append((1, line["Wave"], species, line["ExPot"], line["log(gf)"], line["C6"], -1, 0, "Gaussian", line["EW-18S"], np.nan))
-                #self.korg_input.append((line["Wave"], line["log(gf)"], species, line["ExPot"], line["vdW"]))
-                #self.line_list.append(jl.Korg.Line(line["Wave"], line["log(gf)"], jl.Korg.Species(species), line["ExPot"], line["C6"]))
-                self.ews.append(line["EW-18S"])                
-                            
+                rows.append((1, line.wl * 1e8, f"{line.species}", line.E_lower, line.log_gf, line.gamma_rad, -1, 0, "Gaussian", np.nan, np.nan))
+
             data = np.rec.fromrecords(
                 rows,
                 names=[c for h, c in TransitionsTableModel.COLUMNS]
             )
-            print(data)
             self.table_model = TransitionsTableModel(data)
             self.tableView.setModel(self.table_model)
             self.tableView.resizeColumnsToContents()
 
             
-
-    
     def line_current_changed(self):
         """Force the first column (checkbox) to always be in focus."""
         model = self.tableView.selectionModel()
@@ -586,3 +642,10 @@ class StellarParametersCOGWidget(AnalysisWidget):
         else:
             print(f"selection changed {index}")
         
+        
+
+def get_limits(data, percent=0.05):
+    min_v, max_v = (np.nanmin(data), np.nanmax(data))
+    ptp = (max_v - min_v)
+    offset = percent * ptp
+    return (min_v - offset, max_v + offset)        
