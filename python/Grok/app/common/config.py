@@ -5,8 +5,9 @@ from enum import Enum
 
 #from Qt.Qtcore import QLocale
 from PyQt5.QtCore import QLocale
+from pathlib import Path
 from qfluentwidgets import (qconfig, QConfig, ConfigItem, OptionsConfigItem, BoolValidator,
-                            OptionsValidator, RangeConfigItem, RangeValidator,
+                            OptionsValidator, RangeConfigItem, RangeValidator, ConfigValidator,
                             FolderListValidator, Theme, FolderValidator, ConfigSerializer, __version__)
 
 
@@ -32,6 +33,17 @@ class LanguageSerializer(ConfigSerializer):
 def isWin11():
     return sys.platform == 'win32' and sys.getwindowsversion().build >= 22000
 
+class OptionalPathValidator(ConfigValidator):
+    
+    def validate(self, value):
+        return value is None or Path(value).exists()
+    
+    def correct(self, value):
+        if value is None:
+            return ""
+        path = Path(value)
+        return f"{path.absolute()}"
+    
 
 class Config(QConfig):
     """ Config of application """
@@ -41,6 +53,7 @@ class Config(QConfig):
         "Folders", "LocalMusic", [], FolderListValidator())
     downloadFolder = ConfigItem(
         "Folders", "Download", "app/download", FolderValidator())
+
 
     # main window
     micaEnabled = ConfigItem("MainWindow", "MicaEnabled", isWin11(), BoolValidator())
@@ -58,7 +71,50 @@ class Config(QConfig):
     userName = ConfigItem("Personalization", "User name", os.getlogin())
 
     # Radial velocity
-    RVWavelengthRange = ConfigItem("Radial velocity", "Wavelength range", "8000 - 9000")
+    
+    rv_default_continuum_type = OptionsConfigItem(
+        "Radial Velocity",
+        "rv_default_continuum_type",
+        "Polynomial",
+        OptionsValidator([
+        #    "Sinusoids",
+            "Polynomial",
+        #    "Spline"
+        ])
+    )
+    
+    rv_default_wavelength_range = OptionsConfigItem(
+        "Radial Velocity",
+        "rv_default_wavelength_range",
+        "8400 - 8800 Å",
+        OptionsValidator([
+            "8400 - 8800 Å",
+            "5100 - 5200 Å",
+        ])
+    )
+    rv_default_template_type = OptionsConfigItem(
+        "Radial Velocity", 
+        "rv_default_template_type",
+        "From file",
+        OptionsValidator([
+            #"Auto", 
+            "From file", 
+            #"Synthesize spectrum"
+        ]),
+    )
+    rv_default_template_path = ConfigItem(
+        "Radial Velocity", "rv_default_template_path", None, OptionalPathValidator()
+    )
+    
+    rv_default_continuum_degree = OptionsConfigItem(
+        "Radial Velocity",
+        "rv_default_continuum_degree",
+        "2",
+        OptionsValidator(list(map(str, range(0, 10))))
+    )
+
+
+    
     
     initial_teff = ConfigItem("Initial Stellar Parameters", "Initial effective temperature", 5777, RangeValidator(2500, 10_000))
     

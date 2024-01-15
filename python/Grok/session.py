@@ -49,7 +49,6 @@ class Session:
     
     @cached_property
     def spectra(self):
-        print(self, hash(self), "loading spectra")
         spectra = []
         for input_path in self.input_paths:            
             wavelength, flux, ivar, meta = Spectrum1D.read_fits_multispec(input_path)
@@ -60,6 +59,43 @@ class Session:
     
     def _get_closest_spectrum_index(self, wavelength):
         return get_closest_spectrum_index(self, wavelength)
+        
+    
+    
+    def get_spectrum(self, index=0, rest_frame=False, rectified=False, **kwargs):
+        
+        _wavelength, _flux, _ivar, meta = self.spectra[index]
+
+        continuum = 1 if not rectified else self.get_continuum(index, **kwargs)            
+        v_rel = self.get_v_rel(index) if rest_frame else 0
+            
+        wavelength = _wavelength * (1 - v_rel / 299792.458)
+        flux = _flux / continuum
+        ivar = _ivar * continuum**2
+        
+        return (wavelength, flux, ivar, continuum, v_rel, meta)
+    
+    
+    def get_continuum(self, index=0, **kwargs):
+        return 1
+    
+
+    def set_v_rel(self, v_rel):
+        self.v_rel = v_rel
+        return None
+    
+    
+    def get_v_rel(self, index=None):
+        try:
+            return self.v_rel[index]
+        except:
+            try:
+                return self.v_rel
+            except:
+                return 0
+            
+    
+    #def measure_relative_velocity(self, index, template_path, continuum_kwargs=None, v_lim=(-250, 250), deg=1, N=10, **kwargs):
         
         
 
@@ -115,5 +151,3 @@ class Session:
             metallicity0=metallicity0,
             **kwargs
         )
-    
-    

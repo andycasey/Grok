@@ -80,6 +80,9 @@ class Spectrum1D(object):
 
         return None
     
+    @property
+    def wavelength(self):
+        return self._dispersion
 
     @property
     def dispersion(self):

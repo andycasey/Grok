@@ -1,4 +1,5 @@
 # coding:utf-8
+import os
 from qfluentwidgets import (SettingCardGroup, SwitchSettingCard, FolderListSettingCard,
                             OptionsSettingCard, PushSettingCard, SettingCard,
                             HyperlinkCard, PrimaryPushSettingCard, ScrollArea,
@@ -120,6 +121,67 @@ class SettingInterface(ScrollArea):
         self.personalGroup = SettingCardGroup(
             self.tr('Personalization'), self.scrollWidget)
         
+        # RV
+        self.radialVelocityParametersGroup = SettingCardGroup("Radial velocity", self.scrollWidget)
+        self.rv_default_wavelength_range = ComboBoxSettingCard(
+            cfg.rv_default_wavelength_range,
+            FIF.LANGUAGE,
+            self.tr('Default wavelength range'),
+            self.tr('Set your preferred wavelength range for radial velocity measurements'),
+            texts=cfg.rv_default_wavelength_range.options,
+            parent=self.radialVelocityParametersGroup
+        )
+
+        '''
+        self.rv_default_template_type = OptionsSettingCard(
+            cfg.rv_default_template_type,
+            FIF.BRUSH,
+            self.tr('Default template type'),
+            self.tr("Default template type"),
+            texts=[
+                self.tr("Auto"),
+                self.tr("Select from file"),
+                self.tr("Synthesize spectrum"),
+                self.tr('Use system setting')                
+            ],
+            parent=self.radialVelocityParametersGroup
+        )
+        '''        
+        self.rv_default_template_type = ComboBoxSettingCard(
+            cfg.rv_default_template_type,
+            FIF.BRUSH,
+            'Default template type',
+            "Set the default rest-frame template type for radial velocity measurements",
+            texts=cfg.rv_default_template_type.options,
+            parent=self.radialVelocityParametersGroup
+        )        
+        self.rv_default_template_path = PushSettingCard(
+            "Select template spectrum",
+            FIF.DOWNLOAD,
+            "Radial velocity template path",
+            cfg.get(cfg.rv_default_template_path),
+            self.radialVelocityParametersGroup
+        )        
+        
+        
+        
+        self.rv_default_continuum_type = ComboBoxSettingCard(
+            cfg.rv_default_continuum_type,
+            FIF.BRUSH,
+            "Default continuum function",
+            "Set the default continuum function for radial velocity measurements",
+            texts=cfg.rv_default_continuum_type.options,
+            parent=self.radialVelocityParametersGroup
+        )
+        self.rv_default_continuum_degree = ComboBoxSettingCard(
+            cfg.rv_default_continuum_degree,
+            FIF.BRUSH,
+            "Default polynomial degree for continuum",
+            "Set the default polynomial degree for continuum",
+            texts=cfg.rv_default_continuum_degree.options,
+            parent=self.radialVelocityParametersGroup
+        )
+
         # initial stellar params
         self.initialStellarParametersGroup = SettingCardGroup("Curve of growth analysis", self.scrollWidget)
         self.initialTeffCard = TextSettingCard(
@@ -263,6 +325,12 @@ class SettingInterface(ScrollArea):
         self.musicInThisPCGroup.addSettingCard(self.musicFolderCard)
         self.musicInThisPCGroup.addSettingCard(self.downloadFolderCard)
 
+        self.radialVelocityParametersGroup.addSettingCard(self.rv_default_wavelength_range)
+        self.radialVelocityParametersGroup.addSettingCard(self.rv_default_template_type)
+        self.radialVelocityParametersGroup.addSettingCard(self.rv_default_template_path)
+        self.radialVelocityParametersGroup.addSettingCard(self.rv_default_continuum_type)
+        self.radialVelocityParametersGroup.addSettingCard(self.rv_default_continuum_degree)
+
         self.initialStellarParametersGroup.addSettingCard(self.initialTeffCard)
 
         self.personalGroup.addSettingCard(self.micaCard)
@@ -282,6 +350,7 @@ class SettingInterface(ScrollArea):
         # add setting card group to layout
         self.expandLayout.setSpacing(28)
         self.expandLayout.setContentsMargins(36, 10, 36, 0)
+        self.expandLayout.addWidget(self.radialVelocityParametersGroup)
         self.expandLayout.addWidget(self.musicInThisPCGroup)
         self.expandLayout.addWidget(self.initialStellarParametersGroup)
         self.expandLayout.addWidget(self.personalGroup)
@@ -298,6 +367,8 @@ class SettingInterface(ScrollArea):
             parent=self
         )
 
+
+
     def __onDownloadFolderCardClicked(self):
         """ download folder card clicked slot """
         folder = QFileDialog.getExistingDirectory(
@@ -308,6 +379,23 @@ class SettingInterface(ScrollArea):
         cfg.set(cfg.downloadFolder, folder)
         self.downloadFolderCard.setContent(folder)
 
+    def on_rv_default_template_path_clicked(self):
+        try:
+            directory = os.path.dirname(cfg.get(cfg.rv_default_template_path))
+        except:
+            directory = ""
+            
+        path, _ = QFileDialog.getOpenFileName(
+            caption="Select template spectrum", 
+            directory=directory, 
+            filter="*.fits"
+        )
+        if not path: return
+
+        cfg.set(cfg.rv_default_template_path, path)
+        self.rv_default_template_path.setContent(path)
+                
+        
     def __connectSignalToSlot(self):
         """ connect signal to slot """
         cfg.appRestartSig.connect(self.__showRestartTooltip)
@@ -317,6 +405,7 @@ class SettingInterface(ScrollArea):
             self.__onDownloadFolderCardClicked)
 
         # personalization
+        self.rv_default_template_path.clicked.connect(self.on_rv_default_template_path_clicked)
         self.themeCard.optionChanged.connect(lambda ci: setTheme(cfg.get(ci)))
         self.themeColorCard.colorChanged.connect(setThemeColor)
         self.micaCard.checkedChanged.connect(signalBus.micaEnableChanged)
