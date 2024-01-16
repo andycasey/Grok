@@ -102,6 +102,7 @@ class Spectrum1D(object):
         return self._ivar
 
 
+
     @classmethod
     def read(cls, path, **kwargs):
         """
@@ -116,6 +117,7 @@ class Spectrum1D(object):
 
         # Try multi-spec first since this is currently the most common use case.
         methods = (
+            cls.read_apogee,
             cls.read_fits_multispec,
             cls.read_fits_spectrum1d,
             cls.read_ascii_spectrum1d,
@@ -181,6 +183,28 @@ class Spectrum1D(object):
                 ivars.append(ivar[si:ei])
                         
         return (waves, fluxs, ivars, metadata)
+
+    @classmethod
+    def read_apogee(cls, path):
+        with fits.open(path) as image:
+            wl = 10**(4.179 + 6e-6 * np.arange(8575))
+            flux = image[1].data[0]
+            ivar = image[2].data[0]**-2
+            bad = ~np.isfinite(flux) | ~np.isfinite(ivar) | (ivar == 0)
+            ivar[bad] = 0
+            
+            indices = (
+                [0, 3387],
+                [3387, 6175],
+                [6175, 8575]
+            )
+            wls, fluxs, ivars = ([], [], [])
+            for si, ei in indices:
+                wls.append(wl[si:ei])
+                fluxs.append(flux[si:ei])
+                ivars.append(ivar[si:ei])
+            
+            return (wls, fluxs, ivars, {})
 
     @classmethod
     def read_alex_spectrum(cls, path):
