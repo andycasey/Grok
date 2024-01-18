@@ -44,26 +44,9 @@ class CallbackThread(Thread):
 def expand_path(path):
     return os.path.abspath(os.path.expanduser(path))
 
-@cache
-def load_basis_vectors(path, P, pad=0):    
-    full_path = expand_path(path)
-    if full_path.lower().endswith(".gz"):
-        with gzip.open(full_path, "rb") as fp:
-            masked_basis_vectors = pickle.load(fp)
-    else:        
-        with open(full_path, "rb") as fp:
-            masked_basis_vectors = pickle.load(fp)
-    if pad > 0:
-        basis_vectors = np.zeros((masked_basis_vectors.shape[0], P + 2 * pad))
-        basis_vectors[:, pad:-pad] = masked_basis_vectors
-    else:
-        basis_vectors = masked_basis_vectors
-    return basis_vectors
-
 
 def _convolve_basis_vectors(basis_vectors, λi, λo, Ro, Ri):
     return basis_vectors @ instrument_lsf_kernel(λi, λo, Ro, Ri)
-
 
 def _interpolate_basis_vectors(basis_vectors, λi, λo):        
     bv = np.zeros((basis_vectors.shape[0], len(λo)))
@@ -222,8 +205,6 @@ class ContinuumModel:
         R: Optional[float] = None,
         vacuum: Optional[bool] = True,        
         p0: Optional[Sequence[float]] = None,
-        alpha: Optional[Union[float, int]] = 0,
-        ivar_min: Optional[float] = 1e-8,
         callback_iteration: Optional[callable] = None,
         callback_complete: Optional[callable] = None
     ):
@@ -245,7 +226,7 @@ class ContinuumModel:
         
         λ, flux, ivar, oi = (λ[pi], np.hstack(flux)[pi], np.hstack(ivar)[pi], oi[pi])
         
-        bad_pixel = (~np.isfinite(flux)) | (~np.isfinite(ivar)) | (ivar <= ivar_min)
+        bad_pixel = (~np.isfinite(flux)) | (~np.isfinite(ivar)) 
         ivar[bad_pixel] = 0
         
         # Prepare basis vectors.
@@ -273,21 +254,11 @@ class ContinuumModel:
             A[mask, si:si+n] = cb.design_matrix(λ[mask])
             si += n
 
-        if callback_iteration is None:
-            def f(theta):
-                return ((1 - theta[:C] @ basis_vectors) * (A @ theta[C:]) - flux) * inv_sigma
-        else:
-            def f(theta):
-                y = (1 - theta[:C] @ basis_vectors) * (A @ theta[C:])
-                callback_iteration(theta, y)
-                return (y - flux) * inv_sigma
-            
         # Get an initial guess of continuum with no absorption.
         x0 = self.get_initial_guess(A, flux, ivar, order_masks, N, p0)
         
-        inv_sigma = np.sqrt(ivar)
-        
         # Let's pre-compute some things for faster Jacobian evaluations.
+        inv_sigma = np.sqrt(ivar)        
         mBVT = -basis_vectors.T
         A_inv_sigma = A * inv_sigma[:, None]
         mBVT_inv_sigma = mBVT * inv_sigma[:, None]
@@ -297,11 +268,23 @@ class ContinuumModel:
                 (A @ theta[C:, None]) * mBVT_inv_sigma,
                 (1 + mBVT @ theta[:C, None]) * A_inv_sigma
             ])
-        
+
+        if callback_iteration is None:
+            def f(theta):
+                return ((1 - theta[:C] @ basis_vectors) * (A @ theta[C:]) - flux) * inv_sigma
+        else:
+            def f(theta):
+                y = (1 - theta[:C] @ basis_vectors) * (A @ theta[C:])
+                callback_iteration(theta, y)
+                return (y - flux) * inv_sigma
+                        
         print("Starting")
         t_init = time()
         result = op.least_squares(
-            f, x0, jac=jacobian, bounds=self.get_bounds(x0.size),
+            f, 
+            x0, 
+            jac=jacobian, 
+            bounds=self.get_bounds(x0.size),
             verbose=2
         )
         t_op = time() - t_init
@@ -310,7 +293,7 @@ class ContinuumModel:
         y_pred = np.array([A @ result.x[C:], 1 - result.x[:C] @ basis_vectors])                
         continuum, rectified_model_flux = zip(*[y_pred[:, m] for m in order_masks])
 
-        return (result.x, None, continuum, rectified_model_flux)
+        return (result, continuum, rectified_model_flux)
     
     
     def get_bounds(self, N, component_bounds=(1e-10, +np.inf)):
@@ -395,7 +378,7 @@ if __name__ == "__main__":
     flux = [image[1].data["FLUX"][0, 1:]]
     ivar = [image[1].data["IVAR"][0, 1:]]
     
-    p_opt, p_cov, continuum, rectified_model_flux  = model.fit(
+    result, continuum, rectified_model_flux  = model.fit(
         wl,
         flux,
         ivar,
@@ -418,26 +401,28 @@ if __name__ == "__main__":
     
     
     from specutils import Spectrum1D
-    spectra = Spectrum1D.read("/Users/andycasey/Downloads/j174239-133332red_multi.fits")# flux_ext=6)
+    spectra = Spectrum1D.read("/Users/andycasey/Downloads/phoenix_1red_multi.fits")# flux_ext=6)
     import matplotlib.pyplot as plt
     trim_blue, trim_red = (20, 20)
-    #v_rel = -42.3
-    v_rel = 35.0
+    v_rel = -42.3
+    #v_rel = 35.0
+    v_rel = 69.1
     wl, flux, ivar = ([], [], [])
     for index in range(0, len(spectra)):
         wl.append(spectra[index].wavelength[trim_blue:-trim_red] * (1 - v_rel/299792.458))
         flux.append(spectra[index].flux[trim_blue:-trim_red])
         ivar.append(spectra[index].ivar[trim_blue:-trim_red])   
 
-    blue_spectra = Spectrum1D.read("/Users/andycasey/Downloads/j174239-133332blue_multi.fits")# flux_ext=6)
+    blue_spectra = Spectrum1D.read("/Users/andycasey/Downloads/phoenix_1blue_multi.fits")# flux_ext=6)
     import matplotlib.pyplot as plt
     trim_blue, trim_red = (20, 20)
     for index in range(0, len(blue_spectra)):
         wl.append(blue_spectra[index].wavelength[trim_blue:-trim_red] * (1 - v_rel/299792.458))
         flux.append(blue_spectra[index].flux[trim_blue:-trim_red])
-        ivar.append(blue_spectra[index].ivar[trim_blue:-trim_red])       
+        ivar.append(blue_spectra[index].ivar[trim_blue:-trim_red])
+    
     '''
-    p_opt, p_cov, continuum, rectified_model_flux = model.fit(
+    result, continuum, rectified_model_flux = model.fit(
         wl, 
         flux, 
         ivar, 
@@ -459,7 +444,7 @@ if __name__ == "__main__":
     deg = 3
     C, _ = model.basis_vectors.shape
     
-    p_opt, p_cov, continuum, rectified_model_flux = model.fit(
+    result, continuum, rectified_model_flux = model.fit(
         wl, 
         flux, 
         ivar, 
@@ -481,10 +466,20 @@ if __name__ == "__main__":
     axes[1].set_ylim(0, 1.2)
     for ax in axes:
         ax.set_xlim(3000, 9000)
+
+    telluric = np.loadtxt("/Users/andycasey/Downloads/input/spectra/templates/Synth.Tellurics.350_1100nm/template.txt", skiprows=1)    
+    axes[1].plot(telluric.T[0] * 10 * (1 - v_rel/299792.458), telluric.T[1], c="tab:blue")
     
     raise a
         
+    import matplotlib.pyplot as plt
+    fig, axes = plt.subplots(2, 1, sharex=True)
     
+    axes[0].plot(wl, fl, c='k')
+    axes[0].plot(wl, continuum[0], c="tab:red")
+    axes[1].plot(wl, fl / continuum[0], c='k')
+    axes[1].plot(wl, rectified_model_flux[0], c="tab:red")           
+
     
     from specutils import Spectrum1D
     spectra = Spectrum1D.read("/Users/andycasey/Downloads/hd122563blue_multi.fits")# flux_ext=6)
@@ -502,7 +497,7 @@ if __name__ == "__main__":
     deg = 3
     C, _ = model.basis_vectors.shape
     
-    p_opt, p_cov, continuum, rectified_model_flux = model.fit(
+    result, continuum, rectified_model_flux = model.fit(
         wl, 
         flux, 
         ivar, 
