@@ -42,6 +42,7 @@ class BasePlotWidget(QWidget):
         size_policy=(QSizePolicy.Expanding, QSizePolicy.Fixed),
         toolbar=False,
         toolbar_left_right=True,
+        toolbar_position="bottom",
         resize_interval=50
     ):
         super().__init__(parent)
@@ -99,7 +100,10 @@ class BasePlotWidget(QWidget):
                     "right": self.action_right.trigger
                 })
 
-            self.layout.addWidget(toolbar)
+            if toolbar_position == "bottom":
+                self.layout.addWidget(toolbar)
+            elif toolbar_position == "top":
+                self.layout.insertWidget(0, toolbar)
         
             # necessary to enable panning/zoom    
             self._nav_stack = cbook._Stack()
@@ -128,8 +132,12 @@ class BasePlotWidget(QWidget):
                     "left": self.action_left.trigger,
                     "right": self.action_right.trigger
                 })                
-        #self.layout.addStretch(1)    
+        
+        #if toolbar_position != "bottom":
+        #    self.layout.addWidget(self.canvas)
+            
         #self.installEventFilter(self)
+    
 
     def reset_current_as_home(self):
         self._nav_stack = cbook._Stack()

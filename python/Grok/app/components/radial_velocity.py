@@ -7,19 +7,18 @@ from Qt.QtGui import QDoubleValidator
 from Qt.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout, QFileDialog)
 from qfluentwidgets import (ComboBox, LineEdit, PrimaryPushButton, PushButton)
 
-from ..common.config import cfg, qconfig
+from ..common.config import cfg
 from ..view.gallery_interface import SeparatorWidget
 
 from .analysis import AnalysisWidget
 from .plot import SinglePlotWidget
 
-from specutils import Spectrum1D, continuum, rv
+from specutils import Spectrum1D, continuum, rv 
 
 def _parse_wavelength_range(text):
     return tuple(map(float, map(str.strip, text.strip("Å").split("-"))))
 
 class RadialVelocityWidget(AnalysisWidget):
-    
     
     def __init__(self, session, callback=None, parent=None, stretch=0):
         
@@ -54,7 +53,6 @@ class RadialVelocityWidget(AnalysisWidget):
         
         lhs_layout = QVBoxLayout()
         middle_layout = QVBoxLayout()
-        #rhs_layout = QVBoxLayout()
         
         wavelength_layout = QHBoxLayout()
         wavelength_layout.addWidget(QLabel("Wavelength range:"))
@@ -94,8 +92,6 @@ class RadialVelocityWidget(AnalysisWidget):
         lhs_layout.addLayout(template_layout)
         lhs_layout.addLayout(template_path_layout)
         
-        #lhs_layout.addLayout(template_path_layout)
-
     
         # Middle layout
         continuum_layout = QHBoxLayout()
@@ -169,6 +165,7 @@ class RadialVelocityWidget(AnalysisWidget):
         self.update_current_spectrum_plot()
         return None
     
+    
     def get_nearest_index(self, wavelength_range):
         return self.session._get_closest_spectrum_index(np.mean(wavelength_range))
 
@@ -202,7 +199,7 @@ class RadialVelocityWidget(AnalysisWidget):
         
     
     def fit_continuum(self):
-        
+        # TODO: put to session
         deg = int(self.combo_continuum_degree.currentText().strip())
         wl, flux, ivar = (self.current_spectrum["wavelength"], self.current_spectrum["flux"], self.current_spectrum["ivar"])
         c, theta = continuum.fit_polynomial(wl, flux, ivar, deg=deg)
@@ -213,9 +210,6 @@ class RadialVelocityWidget(AnalysisWidget):
         self.fit_continuum()
         self.update_current_spectrum_plot()
         
-    
-    
-    
 
     def on_wavelength_range_changed(self):        
         wavelength_range = _parse_wavelength_range(self.combo_wavelength_range.currentText())        
@@ -250,7 +244,7 @@ class RadialVelocityWidget(AnalysisWidget):
         self.template_path_label.setText(label)
         self.plot.canvas.draw()
         if not cfg.get(cfg.rv_default_template_path):
-            qconfig.set(
+            cfg.set(
                 cfg.rv_default_template_path,
                 path
             )
@@ -281,11 +275,13 @@ class RadialVelocityWidget(AnalysisWidget):
             self.v_rel.setText(f"{v_rel:.1f}")
         return None
         
+        
     def on_no_shift_button_pushed(self):
         self.v_rel.setText("0")
         self.update_current_spectrum_plot()
         self.set_v_rel()
         self.callback()
+            
             
     def on_measure_and_shift_button_clicked(self):        
         self.set_v_rel()
@@ -294,8 +290,13 @@ class RadialVelocityWidget(AnalysisWidget):
         self.update_current_spectrum_plot()
         self.callback()
             
+            
     def on_measure_clicked(self):        
         # TODO: Put this to Session object?
+        #       We would need at least two methods: 
+        #       - one that will continuum-normalize a specific order before doing the RV measurement
+        #       - another that will do the RV measurement with that order
+        #       Also needs to specify whether it would measure_and_shift (e.g., save the RV) or not
         v_rel, *_ = rv.measure_relative_velocity(
             self.current_spectrum["wavelength"],
             self.current_spectrum["flux"] / self.current_spectrum["continuum"],
@@ -303,6 +304,7 @@ class RadialVelocityWidget(AnalysisWidget):
         )
         self.v_rel.setText(f"{v_rel:.1f}")
         self.update_current_spectrum_plot()
+    
     
     def on_v_rel_changed(self):       
         state = self.v_rel.validator().validate(self.v_rel.text(), 0)[0]

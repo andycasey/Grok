@@ -173,17 +173,17 @@ class ContinuumModel:
         :param meta: [optional]
             A metadata dictionary.            
         """
-        if meta is None:
-            meta = dict()
         self.basis_vacuum_wavelength = basis_vacuum_wavelength
         self.stellar_basis_vectors = stellar_basis_vectors            
         self.telluric_basis_vectors = telluric_basis_vectors
-        self.meta = meta    
+        self.meta = meta or dict()   
         return None        
     
+
     @property
     def can_model_tellurics(self):
         return self.telluric_basis_vectors is not None 
+            
             
     @classmethod
     def from_path(cls, path):
@@ -278,8 +278,6 @@ class ContinuumModel:
     
 
 
-                        
-    
     
     def fit(
         self,
@@ -392,122 +390,18 @@ class ContinuumModel:
         if n_telluric_bases > 0:
             # rectified_telluric_flux
             y_pred.append(
-                np.clip(
-                    1 - result.x[n_stellar_bases:n_bases] @ basis_vectors[n_stellar_bases:n_bases],
-                    0, 1
-                )
+                1 - result.x[n_stellar_bases:n_bases] @ basis_vectors[n_stellar_bases:n_bases],
             )
         else:
-            y_pred.append(np.ones_like(y_pred[0])) # rectified_telluric_flux        
+            y_pred.append(np.nan * np.ones_like(y_pred[0])) # rectified_telluric_flux        
             
         y_pred = np.array(y_pred)
         
         continuum, rectified_model_flux, rectified_telluric_flux = zip(*[y_pred[:, m] for m in order_masks])
         
         return (result, continuum, rectified_model_flux, rectified_telluric_flux)
-            
-        
-    
-    def _fit(
-        self,
-        λ: Sequence[Sequence[float]], 
-        flux: Sequence[Sequence[float]], 
-        ivar: Sequence[Sequence[float]], 
-        continuum_basis: Union[ContinuumBasis, Sequence[ContinuumBasis]] = Sinusoids,
-        R: Optional[float] = None,
-        vacuum: Optional[bool] = True,        
-        p0: Optional[Sequence[float]] = None,
-        callback_iteration: Optional[callable] = None,
-        callback_complete: Optional[callable] = None
-    ):
-        """
-        Fit the model to some observed spectra.
-        
-        :param λ:
+                    
 
-        """
-        C, _ = self.basis_vectors.shape
-        
-        # Prepare data arrays.
-        O = len(λ)
-        λ, flux, ivar = _ensure_ragged(O, λ, flux, ivar)
-        
-        oi = np.hstack([np.ones_like(wl) * o for o, wl in enumerate(λ)]) # order indices
-        λ = np.hstack(λ)
-        pi = np.argsort(λ) # pixel indices
-        
-        λ, flux, ivar, oi = (λ[pi], np.hstack(flux)[pi], np.hstack(ivar)[pi], oi[pi])
-        
-        bad_pixel = (~np.isfinite(flux)) | (~np.isfinite(ivar)) 
-        ivar[bad_pixel] = 0
-        
-        # Prepare basis vectors.
-        try:
-            # Use pre-convolution if we have it.
-            basis_vectors = self.resampled_basis_vectors 
-        except AttributeError:
-            basis_vectors = self.resample_basis_vectors(λ, Ro=R, vacuum=vacuum)
-        else:
-            if R is not None:
-                warnings.warn("R was given but the basis vectors have already been convolved; ignoring R")
-        
-        # Compute number of continuum parameters per order.
-        continuum_basis = _expand_continuum_basis(continuum_basis, O)
-        
-        N = [b.num_parameters for b in continuum_basis]
-                
-        A = np.zeros((λ.size, sum(N)))
-        
-        # Construct the full design matrix.
-        si, order_masks = (0, [])
-        for o, (cb, n) in enumerate(zip(continuum_basis, N)):
-            mask = (oi == o)
-            order_masks.append(mask)            
-            A[mask, si:si+n] = cb.design_matrix(λ[mask])
-            si += n
-
-        # Get an initial guess of continuum with no absorption.
-        x0 = self.get_initial_guess(A, flux, ivar, order_masks, N, p0)
-        
-        # Let's pre-compute some things for faster Jacobian evaluations.
-        inv_sigma = np.sqrt(ivar)        
-        mBVT = -basis_vectors.T
-        A_inv_sigma = A * inv_sigma[:, None]
-        mBVT_inv_sigma = mBVT * inv_sigma[:, None]
-        
-        def jacobian(theta):
-            return np.hstack([
-                (A @ theta[C:, None]) * mBVT_inv_sigma,
-                (1 + mBVT @ theta[:C, None]) * A_inv_sigma
-            ])
-
-        if callback_iteration is None:
-            def f(theta):
-                return ((1 - theta[:C] @ basis_vectors) * (A @ theta[C:]) - flux) * inv_sigma
-        else:
-            def f(theta):
-                y = (1 - theta[:C] @ basis_vectors) * (A @ theta[C:])
-                callback_iteration(theta, y)
-                return (y - flux) * inv_sigma
-                        
-        print("Starting")
-        t_init = time()
-        result = op.least_squares(
-            f, 
-            x0, 
-            jac=jacobian, 
-            bounds=self.get_bounds(x0.size),
-            verbose=2
-        )
-        t_op = time() - t_init
-        print(f"took {t_op:.1f} s to optimize {len(x0)} parameters with {flux.size} data points")
-        
-        y_pred = np.array([A @ result.x[C:], 1 - result.x[:C] @ basis_vectors])                
-        continuum, rectified_model_flux = zip(*[y_pred[:, m] for m in order_masks])
-
-        return (result, continuum, rectified_model_flux)
-    
-    
     def get_bounds(self, n_params, n_basis_vectors, component_bounds=(1e-10, +np.inf)):
         return np.vstack([
             np.tile(component_bounds, n_basis_vectors).reshape((n_basis_vectors, 2)),
@@ -568,27 +462,6 @@ def _interpolate_basis_vector(λ, basis_vacuum_wavelength, basis_vectors):
         bv[c] = np.interp(λ, basis_vacuum_wavelength, basis_vector, left=0, right=0)
     return bv
 
-
-
-def old__interpolate_basis_vectors(basis_vacuum_wavelength, basis_vectors, λ_vacuum_observed, v_rel, telluric_basis_vectors=None):
-    C = basis_vectors.shape[0]
-    T = telluric_basis_vectors.shape[0] if telluric_basis_vectors is not None else 0
-            
-    P = λ_vacuum_observed.size
-    λ_vacuum_rest = apply_radial_velocity_shift(λ_vacuum_observed, -v_rel)
-    
-    bv = np.zeros((C + T, P))
-    for c, basis_vector in enumerate(basis_vectors):
-        bv[c] = np.interp(λ_vacuum_rest, basis_vacuum_wavelength, basis_vector, left=0, right=0)
-        
-        raise a # check this
-    
-    if telluric_basis_vectors:
-        # The telluric basis vectors do not get shifted
-        for t, basis_vector in enumerate(telluric_basis_vectors):                
-            bv[C + t] = np.interp(λ_vacuum_observed, basis_vacuum_wavelength, basis_vector, left=0, right=0)
-    
-    return bv   
 
 
 def _ensure_ragged(N, *args):

@@ -1,7 +1,4 @@
 {
-    "Radial velocity": {
-        "Wavelength range": "8000 - 9000"
-    },
     "Material": {
         "AcrylicBlurRadius": 0
     },
@@ -9,8 +6,11 @@
         "CheckUpdateAtStartUp": false
     },
     "Folders": {
-        "Download": "/Users/andycasey/software/smhr/smh/app/download",
-        "LocalMusic": []
+        "Download": "/Users/andycasey/research/Grok/python/Grok/synthesis",
+        "LocalMusic": [
+            "/Users/andycasey/Music/Music",
+            "/Users/andycasey/Downloads"
+        ]
     },
     "MainWindow": {
         "DpiScale": "Auto",
@@ -19,6 +19,13 @@
     },
     "Initial Stellar Parameters": {
         "Initial effective temperature": 6000
+    },
+    "Radial Velocity": {
+        "rv_default_continuum_degree": "2",
+        "rv_default_continuum_type": "Polynomial",
+        "rv_default_template_path": "/Users/andycasey/software/smhr_original/smh/data/spectra/hd122563.fits",
+        "rv_default_template_type": "From file",
+        "rv_default_wavelength_range": "8400 - 8800 Å"
     },
     "QFluentWidgets": {
         "ThemeColor": "#ff009faa",

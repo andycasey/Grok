@@ -254,7 +254,7 @@ class ExcitationIonizationBalanceWidget(BasePlotWidget):
         size_policy=(QSizePolicy.Expanding, QSizePolicy.Fixed),
         resize_interval=100
     ):
-        super().__init__(toolbar=True, toolbar_left_right=False, parent=parent, figsize=figsize, size_policy=size_policy, resize_interval=resize_interval)
+        super().__init__(toolbar=True, toolbar_left_right=False, toolbar_position="top", parent=parent, figsize=figsize, size_policy=size_policy, resize_interval=resize_interval)
         
         self.axes = self.canvas.figure.subplots(3, 1, gridspec_kw={"height_ratios": [1, 1, 1]})
         ax_profile, ax_excitation, ax_rew = self.axes
@@ -529,12 +529,17 @@ class StellarParametersCOGWidget(AnalysisWidget):
         self.line_edit_feh.setText(f"{m_h:.3f}")
         
         ylim = get_limits(line_abundances)
-        if self._ylim_ptp is not None:
-            ylim_mean = np.mean(ylim)
-            edge = 0.5 * np.ptp(self._ylim_ptp)
-            ylim = (ylim_mean - edge, ylim_mean + edge) 
-        else:
+        try:
+            self._ylim_ptp
+        except:
             self._ylim_ptp = ylim
+        else:
+
+            if self._ylim_ptp is not None:
+                ylim_mean = np.mean(ylim)
+                edge = 0.5 * np.ptp(self._ylim_ptp)
+                ylim = (ylim_mean - edge, ylim_mean + edge)
+            
         for ax in self.excitation_ionization_plot.axes[1:]:
             ax.set_ylim(ylim)     
         

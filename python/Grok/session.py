@@ -51,7 +51,21 @@ class Session:
     def spectra(self):
         spectra = []
         for input_path in self.input_paths:            
-            wavelength, flux, ivar, meta = Spectrum1D.read_fits_multispec(input_path)
+            try:
+                wavelength, flux, ivar, meta = Spectrum1D.read_fits_multispec(input_path)
+            except:
+                #    wavelength, flux, ivar, meta = Spectrum1D.read_apogee(input_path)
+                from astropy.io import fits
+                with fits.open(input_path) as image:
+                    flux = image[0].data
+                    wavelength = image[0].header["CRVAL1"] + image[0].header["CDELT1"] * np.arange(image[0].header["NAXIS1"])
+                    ivar = np.ones_like(flux)
+                    
+                wavelength = [wavelength]            
+                flux = [flux]
+                ivar = [ivar]
+                meta = {"input_path": input_path}
+                
             for i in range(len(wavelength)):
                 spectra.append([wavelength[i], flux[i], ivar[i], meta])
         return spectra

@@ -194,7 +194,8 @@ class SessionTabsInterface(QWidget):
         )
 
         self.myInterface = SessionInterface(session, self)        
-        self.addMySubInterface(self.myInterface, 'myInterface', 'HD 122563')
+        self.addMySubInterface(self.myInterface, 'myInterface', '18 Sco')
+        #HD 122563')
 
         qrouter.setDefaultRouteKey(
             self.stackedWidget, 
