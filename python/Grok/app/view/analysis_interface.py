@@ -184,7 +184,8 @@ class SessionTabsInterface(QWidget):
         self.connectSignalToSlot()
 
         self.tabBar.setCloseButtonDisplayMode(TabCloseButtonDisplayMode.ON_HOVER)
-
+ 
+        """
         session = Session(
             [
                 "/Users/andycasey/Downloads/hd122563blue_multi.fits",
@@ -196,11 +197,11 @@ class SessionTabsInterface(QWidget):
         self.myInterface = SessionInterface(session, self)        
         self.addMySubInterface(self.myInterface, 'myInterface', '18 Sco')
         #HD 122563')
-
-        qrouter.setDefaultRouteKey(
-            self.stackedWidget, 
-            self.myInterface.objectName()
-        )
+        """
+        #qrouter.setDefaultRouteKey(
+        #    self.stackedWidget, 
+        #    self.myInterface.objectName()
+        #)
         
         
         
