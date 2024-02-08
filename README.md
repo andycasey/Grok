@@ -18,3 +18,11 @@ conda env create -f environment.yml
 source activate Grok
 python setup_korg.py
 ```
+
+
+Running tests
+-------------
+
+```
+pytest
+```
