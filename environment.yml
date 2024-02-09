@@ -6,6 +6,8 @@ dependencies:
 - pip
 - matplotlib
 - astropy
+- scipy
+- scikit-learn
 - pip:
   - juliacall
   - PyQt-Fluent-Widgets[full] -i https://pypi.org/simple/
