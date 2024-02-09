@@ -34,7 +34,7 @@ from qfluentwidgets import (Flyout, IconWidget, InfoBarIcon, LineEdit,
                             ToolTipFilter, TransparentDropDownPushButton,
                             applyThemeColor, isDarkTheme, qrouter,
                             setCustomStyleSheet, setTheme, toggleTheme)
-from session import Session
+from Grok.session import Session
 
 from ..common.config import (ACRONYM, EXAMPLE_URL, FEEDBACK_URL,
                              FILENAME_SUFFIX, HELP_URL, cfg)

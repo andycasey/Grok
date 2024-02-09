@@ -52,7 +52,7 @@ from Qt.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout)
 from qfluentwidgets import (ComboBox, LineEdit, PrimaryPushButton, PushButton)
 
 
-from session import Session
+from Grok.session import Session
 
 from .analysis import AnalysisWidget
 from .plot import BasePlotWidget, SinglePlotWidget

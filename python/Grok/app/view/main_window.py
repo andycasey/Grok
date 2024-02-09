@@ -41,7 +41,7 @@ class KeyPressFilter(QObject):
         '''            
         return False
     
-from synthesis.korg import QKorgProcess
+from Grok.synthesis.korg import QKorgProcess
 
 class MainWindow(FluentWindow):
 

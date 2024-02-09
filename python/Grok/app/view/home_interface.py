@@ -1,4 +1,5 @@
 # coding:utf-8
+import os
 from PyQt5.QtCore import Qt, QRectF
 from PyQt5.QtGui import QPixmap, QPainter, QColor, QBrush, QPainterPath, QLinearGradient
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QHBoxLayout
@@ -178,7 +179,7 @@ class HomeInterface(ScrollArea):
             self.view
         )        
         RecentUpdatesView.addSampleCard(
-            icon="app/resource/images/icons/Korg_black.svg",
+            icon=f"{os.path.dirname(__file__)}/../resource/images/icons/Korg_black.svg",
             title="Korg v0.27.1 released",
             content=self.tr(
                 """

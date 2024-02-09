@@ -4,8 +4,8 @@ from typing import Union, Sequence, Type, Optional
 from functools import cached_property
 
 
-from specutils import Spectrum1D
-from synthesis import BaseKorg, Korg
+from Grok.specutils import Spectrum1D
+from Grok.synthesis import BaseKorg, Korg
 
 # Move to utilities:
         
