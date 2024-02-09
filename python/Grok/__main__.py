@@ -4,14 +4,18 @@ import sys
 
 from Qt.QtCore import Qt, QTranslator
 from Qt.QtWidgets import QApplication
-from qfluentwidgets import FluentTranslator
+from Grok.utils import suppress
+
+with suppress():
+    # No advertising, please.
+    from qfluentwidgets import FluentTranslator
 
 from Grok.app.common.config import cfg
 from Grok.app.view.main_window import MainWindow
 
+
 def main():
         
-
     # enable dpi scale
     if cfg.get(cfg.dpiScale) == "Auto":
         QApplication.setHighDpiScaleFactorRoundingPolicy(
