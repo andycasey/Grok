@@ -109,13 +109,7 @@ class SettingInterface(ScrollArea):
                 QStandardPaths.MusicLocation),
             parent=self.musicInThisPCGroup
         )
-        self.downloadFolderCard = PushSettingCard(
-            self.tr('Choose folder'),
-            FIF.DOWNLOAD,
-            self.tr("Download directory"),
-            cfg.get(cfg.downloadFolder),
-            self.musicInThisPCGroup
-        )
+
 
         # personalization
         self.personalGroup = SettingCardGroup(
@@ -323,7 +317,7 @@ class SettingInterface(ScrollArea):
 
         # add cards to group
         self.musicInThisPCGroup.addSettingCard(self.musicFolderCard)
-        self.musicInThisPCGroup.addSettingCard(self.downloadFolderCard)
+        #self.musicInThisPCGroup.addSettingCard(self.downloadFolderCard)
 
         self.radialVelocityParametersGroup.addSettingCard(self.rv_default_wavelength_range)
         self.radialVelocityParametersGroup.addSettingCard(self.rv_default_template_type)
@@ -369,6 +363,7 @@ class SettingInterface(ScrollArea):
 
 
 
+    '''
     def __onDownloadFolderCardClicked(self):
         """ download folder card clicked slot """
         folder = QFileDialog.getExistingDirectory(
@@ -378,6 +373,7 @@ class SettingInterface(ScrollArea):
 
         cfg.set(cfg.downloadFolder, folder)
         self.downloadFolderCard.setContent(folder)
+    '''
 
     def on_rv_default_template_path_clicked(self):
         try:
@@ -400,9 +396,6 @@ class SettingInterface(ScrollArea):
         """ connect signal to slot """
         cfg.appRestartSig.connect(self.__showRestartTooltip)
 
-        # music in the pc
-        self.downloadFolderCard.clicked.connect(
-            self.__onDownloadFolderCardClicked)
 
         # personalization
         self.rv_default_template_path.clicked.connect(self.on_rv_default_template_path_clicked)

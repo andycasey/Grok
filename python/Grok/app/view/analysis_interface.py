@@ -254,32 +254,34 @@ class SessionTabsInterface(QWidget):
             filter=f"FITS (*.fits *.fit *.fits.gz *.fit.gz);;CSV (*.csv);;ASCII (*.txt);;{ACRONYM} sessions (*.{FILENAME_SUFFIX});;All files (*)"
         )
         if filenames:            
-            
-            session = Session(
-                filenames, 
-                #synthesis=self.parent.parent.korg_process
-            )
-            
-            # Get a suggested name.
-            try:
-                name = getval(filenames[0], "OBJECT", 0)
-            except:
-                name = f"Untitled-{self.tabCount}"
-            
-            # load the file, parse a name from it.        
-            widget = SessionInterface(session, self)
+            self.createTab(filenames)            
 
-            self.addMySubInterface(widget, name, name)        
-            self.tabCount += 1
-            
-            # Set the current session to the newest one
-            self.stackedWidget.setCurrentWidget(widget)
-            self.tabBar.setCurrentTab(widget.objectName())
+    
+    def createTab(self, filenames):
+        session = Session(
+            filenames, 
+            #synthesis=self.parent.parent.korg_process
+        )
+        
+        # Get a suggested name.
+        try:
+            name = getval(filenames[0], "OBJECT", 0)
+        except:
+            name = f"Untitled-{self.tabCount}"
+        
+        # load the file, parse a name from it.        
+        widget = SessionInterface(session, self)
 
-            # Make sure the analysis tab is in view
-            interface, = self.parent.parent.findChildren(AnalysisInterface)
-            self.parent.parent.stackedWidget.setCurrentWidget(interface, False)
-            
+        self.addMySubInterface(widget, name, name)        
+        self.tabCount += 1
+        
+        # Set the current session to the newest one
+        self.stackedWidget.setCurrentWidget(widget)
+        self.tabBar.setCurrentTab(widget.objectName())
+
+        # Make sure the analysis tab is in view
+        interface, = self.parent.parent.findChildren(AnalysisInterface)
+        self.parent.parent.stackedWidget.setCurrentWidget(interface, False)        
 
 
     def removeTab(self, index):

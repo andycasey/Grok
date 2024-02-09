@@ -41,7 +41,7 @@ def main():
     app.installTranslator(galleryTranslator)
 
     # create main window
-    w = MainWindow()
+    w = MainWindow(sys.argv[1:])
     w.show()
 
     app.exec_()

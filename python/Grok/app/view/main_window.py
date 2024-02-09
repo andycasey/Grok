@@ -45,7 +45,7 @@ from Grok.synthesis.korg import QKorgProcess
 
 class MainWindow(FluentWindow):
 
-    def __init__(self):
+    def __init__(self, filenames=None):
         super().__init__()
         self.initWindow()
 
@@ -66,6 +66,10 @@ class MainWindow(FluentWindow):
         self.splashScreen.finish()
                 
         self.installEventFilter(KeyPressFilter(parent=self))   
+
+        if filenames:
+            print(f"adding with filenames: {filenames}")
+            self.analysisInterface.view.createTab(filenames)
 
 
     def connectSignalToSlot(self):
