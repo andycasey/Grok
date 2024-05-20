@@ -3,3 +3,7 @@ scipy
 numpy
 astropy
 matplotlib
+gwcs
+ndcube
+h5py
+scikit-learn

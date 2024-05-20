@@ -24,7 +24,7 @@ from scipy import interpolate
 from astropy.constants import c
 
 from Grok.specutils.lsf import instrument_lsf_kernel
-from Grok.specutils.spectrum import Spectrum
+from Grok.specutils.spectrum import Spectrum, apply_relativistic_doppler_shift
 
 from threading import Thread
 
@@ -55,20 +55,6 @@ class cumulative:
         self.sum += I
         return (self.sum - I, item)        
 
-
-class CallbackThread(Thread):
-    def __init__(self, args=(), callback=None, **kwargs):
-        target = kwargs.pop("target")
-        super(CallbackThread, self).__init__(target=self.target_with_callback, **kwargs)
-        self.callback = callback
-        self.method = target
-        self.args = args
-        return None
-    
-    def target_with_callback(self):
-        result = self.method(*self.args)
-        if self.callback is not None:
-            self.callback(result)
 
 def expand_path(path):
     return os.path.abspath(os.path.expanduser(path))
@@ -119,20 +105,8 @@ class Sinusoids(ContinuumBasis):
         for j, f in zip(range(1, self.P), cycle((np.sin, np.cos))):
             A[:, j] = f(scale * (j + (j % 2)))        
         return A
-            
-        scale = 2 * (np.pi / L)
-        return np.vstack(
-            [
-                np.ones_like(wavelength).reshape((1, -1)),
-                np.array(
-                    [
-                        [np.cos(o * scale * wavelength), np.sin(o * scale * wavelength)]
-                        for o in range(1, self.deg + 1)
-                    ]
-                ).reshape((2 * self.deg, wavelength.size)),
-            ]
-        ).T
 
+            
 class Polynomial(ContinuumBasis):
     
     def __init__(self, deg=2):
@@ -210,7 +184,7 @@ class ContinuumModel:
         )
     
     
-    def resample_basis_vectors(self, λ_vacuum, stellar_v_rel=0.0, Ro=None, Ri=None, telluric=True, **kwargs):
+    def resample_basis_vectors(self, λ_vacuum, stellar_v_rel=0.0, telluric_v_rel=0.0, Ro=None, Ri=None, telluric=True, **kwargs):
         """
         Resample (and optionally convolve) the basis vectors to the observed wavelengths.
         
@@ -229,27 +203,29 @@ class ContinuumModel:
                 
         """
 
-        λ_vacuum_obs = apply_radial_velocity_shift(λ_vacuum, stellar_v_rel)
+        λ_vacuum_stellar = apply_radial_velocity_shift(λ_vacuum, stellar_v_rel)
+        λ_vacuum_telluric = apply_relativistic_doppler_shift(λ_vacuum, telluric_v_rel)
+        
         
         if Ro is None:
             # Interpolation only.            
                 
-            basis_vectors = [_interpolate_basis_vector(λ_vacuum_obs, self.basis_vacuum_wavelength, self.stellar_basis_vectors)]
+            basis_vectors = [_interpolate_basis_vector(λ_vacuum_stellar, self.basis_vacuum_wavelength, self.stellar_basis_vectors)]
             if telluric:
-                basis_vectors.append(_interpolate_basis_vector(λ_vacuum, self.basis_vacuum_wavelength, self.telluric_basis_vectors))
+                basis_vectors.append(_interpolate_basis_vector(λ_vacuum_telluric, self.basis_vacuum_wavelength, self.telluric_basis_vectors))
             
         else:
             # Convolution
             Ri = Ri or self.meta.get("Ri", np.inf)
             
             # special case to avoid double-building the same convolution kernel            
-            K = instrument_lsf_kernel(self.basis_vacuum_wavelength, λ_vacuum_obs, Ro, Ri)                
+            K = instrument_lsf_kernel(self.basis_vacuum_wavelength, λ_vacuum_stellar, Ro, Ri)                
             
             basis_vectors = [self.stellar_basis_vectors @ K]
             if telluric:
-                # Only reconstruct the kernel if the v_rel != 0
-                if v_rel != 0:
-                    K = instrument_lsf_kernel(self.basis_vacuum_wavelength, λ_vacuum, Ro, Ri)
+                # Only reconstruct the kernel if the v_rel != telluric_v_rel
+                if stellar_v_rel != telluric_v_rel:
+                    K = instrument_lsf_kernel(self.basis_vacuum_wavelength, λ_vacuum_telluric, Ro, Ri)
                 
                 basis_vectors.append(self.telluric_basis_vectors @ K)
     
@@ -285,6 +261,7 @@ class ContinuumModel:
         continuum_basis: Union[ContinuumBasis, Sequence[ContinuumBasis]] = Sinusoids,
         p0: Optional[Sequence[float]] = None,
         stellar_v_rel: Optional[float] = 0.0,
+        telluric_v_rel: Optional[float] = 0.0,
         R: Optional[float] = None,
         telluric: Optional[bool] = True,
         callback: Optional[callable] = None,
@@ -329,6 +306,7 @@ class ContinuumModel:
         basis_vectors, n_stellar_bases, n_telluric_bases = self.resampled_basis_vectors = self.resample_basis_vectors(
             λ_vacuum, 
             stellar_v_rel=stellar_v_rel, 
+            telluric_v_rel=telluric_v_rel,
             Ro=R, 
             telluric=telluric,
             **kwargs
@@ -423,11 +401,10 @@ class ContinuumModel:
         ]).T            
 
 
-def _solve_X(flux: Sequence[float], ivar: Sequence[float], A: np.array):
-    MTM = A.T @ (ivar[:, None] * A)
-    MTy = A.T @ (ivar * flux)
-    theta = np.linalg.solve(MTM, MTy)
-    return theta
+def _solve_X(Y: Sequence[float], Cinv: Sequence[float], A: np.array):
+    MTM = A.T @ (Cinv[:, None] * A)
+    MTy = A.T @ (Cinv * Y)
+    return np.linalg.solve(MTM, MTy)
         
         
 def instantiate(item, **kwargs):
@@ -550,24 +527,28 @@ if __name__ == "__main__":
     else:
         print("Using previous model and spectra!!!")
     
-    from Grok.specutils.spectrum import Spectrum
+    from Grok.specutils.spectrum import Spectrum, SpectrumCollection
     
     spectra = [
         Spectrum.read("/Users/andycasey/Downloads/pepsir.20230619.018.dxt.nor")
     ]
-    v_rel = -20166.342/1000.0
-    spectra[0].apply_velocity_shift(v_rel)
+    spectra = SpectrumCollection.read("/Users/andycasey/Downloads/hd122563red_multi.fits")
+    
+    #v_rel = -20166.342/1000.0
+    #spectra[0].apply_velocity_shift(v_rel)
     
     
     (result, continuum, rectified_model_flux, rectified_telluric_flux) = model.fit(
         spectra, 
-        stellar_v_rel=-v_rel,
+        stellar_v_rel=0.0,
+        #telluric_v_rel=-20166.342/1000.0,
         telluric=True,
         continuum_basis=NoContinuum(),
         xtol=1e-16,
         ftol=1e-64,
     )
     
+    import matplotlib.pyplot as plt
     fig, axes = plt.subplots(2, 1, sharex=True)
     
     for i, spectrum in enumerate(spectra):
@@ -586,7 +567,8 @@ if __name__ == "__main__":
     axes[0].set_ylim(0, 1.2)
     axes[1].set_xlabel("Wavelength [A]")
     axes[0].set_xlim(spectra[0].λ[0], spectra[-1].λ[-1])
-                
+    
+    raise a
 
     # Given some line list, we want to:
     # - fit some profile at each wavelength;
@@ -594,11 +576,67 @@ if __name__ == "__main__":
     # - use the existing stellar model as the initial guess of the line profile;
     # - generate masks in the windowed region of the line based on some heuristic.
     
-    raise a
-    #fig.axes[0].set_title(f"index = {index}")   
-    ''' 
+    line_wavelengths = np.loadtxt("/Users/andycasey/Downloads/pepsi_linelist.moog", usecols=(0, ))
     
-    '''
+    window = 2 # angstroms
+    
+    min_rectified_model_stellar_flux = 0.995
+    min_rectified_model_telluric_flux = 0.995
+    
+    spectrum, = spectra
+    rectified_telluric_flux, = rectified_telluric_flux
+    rectified_model_flux, = rectified_model_flux
+    
+    continuum_basis = None
+    
+    def to_contiguous_regions(mask):
+        v = np.diff(mask.astype(int))
+        indices = np.hstack([
+            0, 
+            np.repeat(1 + np.where(v != 0)[0], 2),
+            len(mask)
+        ])
+                
+        indices = indices.reshape((-1, 2))
+        if indices.size > 0:
+            offset = 0 if mask[0] else 1
+            return indices[offset::2]
+        return indices
+            
+    
+    
+
+    # For each line, we want to fit a Gaussian profile.
+    for λ in air_to_vacuum(line_wavelengths):        
+        if not (spectrum.λ[0] < λ < spectrum.λ[-1]):
+            continue
+            
+        # use the existing spectral model.
+        si, ei = spectrum.λ.searchsorted([λ - window, λ + window]) + [0, 1]
+        
+        Y = spectrum.flux[si:ei]
+        Cinv = spectrum.ivar[si:ei]
+        
+        # generate a mask
+        mask = (
+            (rectified_telluric_flux[si:ei] < min_rectified_model_telluric_flux)
+        |   (rectified_model_flux[si:ei] < min_rectified_model_stellar_flux)
+        )
+        
+        fig, ax = plt.subplots()
+        ax.plot(spectrum.λ[si:ei], Y, c='k')
+        ax.plot(spectrum.λ[si:ei], rectified_model_flux[si:ei], c="tab:red")
+        ax.plot(spectrum.λ[si:ei], rectified_telluric_flux[si:ei], c="tab:blue")
+        
+        for sm, em in to_contiguous_regions(mask):
+            ax.axvspan(spectrum.λ[si + sm], spectrum.λ[si + em], color="#cccccc", alpha=0.2)
+        
+        ax.axvline(λ, c="#666666", ls=":")
+        
+        
+    
+    
+    
     
     from specutils import Spectrum1D
     spectra = Spectrum1D.read("/Users/andycasey/Downloads/hd122563red_multi.fits")# flux_ext=6)

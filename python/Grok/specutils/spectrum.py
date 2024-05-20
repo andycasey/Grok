@@ -8,6 +8,11 @@ from specutils.utils.wcs_utils import air_to_vac
 
 C_KM_S = c.to("km/s").value
 
+# TODO: put elsewhere
+def apply_relativistic_doppler_shift(λ, v):
+    beta = v / C_KM_S
+    return λ * np.sqrt((1 + beta) / (1 - beta))
+
 class Spectrum(NDIOMixin):
     
     def __init__(
