@@ -47,21 +47,6 @@ class BannerWidget(QWidget):
             REPO_URL
         )
 
-        self.linkCardView.addCard(
-            FluentIcon.CODE,
-            self.tr('Code samples'),
-            self.tr(
-                'Automate your analysis.'),
-            EXAMPLE_URL
-        )
-
-        self.linkCardView.addCard(
-            FluentIcon.FEEDBACK,
-            self.tr('Send feedback'),
-            self.tr(f'Provide feedback and help us improve {NAME}.'),
-            FEEDBACK_URL
-        )
-
     def paintEvent(self, e):
         super().paintEvent(e)
         painter = QPainter(self)
@@ -109,53 +94,8 @@ class HomeInterface(ScrollArea):
 
         self.__initWidget()
         
-        button_layout = QHBoxLayout()
-        button_layout.setContentsMargins(40, 0, 0, 0)
-        self.button_pre_compile_korg = PushButton("Pre-compile Korg")
-        self.button_pre_compile_korg.clicked.connect(self.pre_compile_korg)
-        
-        button_layout.addWidget(self.button_pre_compile_korg)
-        button_layout.addStretch(1)
-        self.vBoxLayout.addLayout(button_layout)
-        
-        self.show_korg_updates()
-    
-    def pre_compile_korg(self):
-        
-        '''
-        self.cog_line_list = self.parent.korg_process.read_linelist(
-            "/Users/andycasey/Downloads/linelist_mm.txt", 
-            format="moog",
-        )
-        print(f"got cog line list: {self.cog_line_list}")
-        print(f"OK DONE")
-        
-        def my_callback(ll):
-            print(f"got a ll with {len(ll)} entries: {ll[0]}")
-        
-        self.parent.korg_process.async_read_linelist(
-            "/Users/andycasey/Downloads/linelist_mm.txt", 
-            format="moog",
-            callback=my_callback            
-        )
-        '''
-        
-        '''
-        
-        ll = self.parent.korg_process.read_linelist(
-            "/Users/andycasey/research/Grok/python/Grok/Melendez_et_al_Fe.moog", 
-            format="moog",
-        )  
-        A_X = self.parent.korg_process.format_A_X(0.0, 0.0)
-        atm = self.parent.korg_process.interpolate_marcs(5777, 4.4)
-        import numpy as np
-        ews = list(np.loadtxt("/Users/andycasey/research/Grok/python/Grok/Melendez_et_al_Fe.moog", usecols=(5, ), skiprows=1))
-        foo = self.parent.korg_process.ews_to_abundances(atm, ll, A_X, ews)
-        '''
-        #self.parent.korg_process.format_A_X(0, 0))
-        #print(f"got foo: {foo}")
-    
-
+        #self.show_korg_updates()
+            
     def __initWidget(self):
         self.view.setObjectName('view')
         self.setObjectName('homeInterface')
@@ -173,7 +113,6 @@ class HomeInterface(ScrollArea):
 
 
     def show_korg_updates(self):
-        
         RecentUpdatesView = UpdatesCardView(
             self.tr("Recent updates"), 
             self.view

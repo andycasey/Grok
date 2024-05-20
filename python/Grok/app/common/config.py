@@ -124,13 +124,13 @@ YEAR = 2023
 NAME = "Grok"
 ACRONYM = "Grok"
 FILENAME_SUFFIX = "grok"
-AUTHOR = "Grok Collaboration"
+AUTHOR = f"{NAME} Collaboration"
 VERSION = __version__
-HELP_URL = "https://github.com/andycasey/Grok"
+HELP_URL = f"https://github.com/andycasey/{NAME}"
 REPO_URL = HELP_URL
 EXAMPLE_URL = HELP_URL
-FEEDBACK_URL = "https://github.com/andycasey/Grok/issues"
-RELEASE_URL = "https://github.com/andycasey/Grok/releases/latest"
+FEEDBACK_URL = f"https://github.com/andycasey/{NAME}/issues"
+RELEASE_URL = f"https://github.com/andycasey/{NAME}/releases/latest"
 SUPPORT_URL = FEEDBACK_URL
 
 

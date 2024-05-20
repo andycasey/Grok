@@ -184,7 +184,7 @@ class SessionTabsInterface(QWidget):
         self.connectSignalToSlot()
 
         self.tabBar.setCloseButtonDisplayMode(TabCloseButtonDisplayMode.ON_HOVER)
- 
+
         """
         session = Session(
             [

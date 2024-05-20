@@ -3,29 +3,12 @@ import numpy as np
 from typing import Union, Sequence, Type, Optional
 from functools import cached_property
 
-
-from Grok.specutils import Spectrum1D
+from Grok.utils import expand_path
+from Grok.specutils import Spectrum, SpectrumCollection
 from Grok.synthesis import BaseKorg, Korg
+from astropy.constants import c
 
-# Move to utilities:
-        
-def expand_path(path):
-    return os.path.abspath(os.path.expanduser(path))
-
-def expand_input_paths(input_paths):
-    if isinstance(input_paths, (str, bytes)):
-        input_paths = [input_paths]
-    return tuple(map(expand_path, input_paths))
-
-
-def get_closest_spectrum_index(session, wavelength):
-    """Return the spectrum in the session closest to the wavelength."""
-    mean_wavelengths = [np.mean(wl) for wl, *_ in session.spectra]
-    index = np.argmin(np.abs(np.array(mean_wavelengths) - wavelength))
-    return index
-
-
-
+C_KM_S = c.to("km/s").value
 
 class Session:
     
@@ -34,48 +17,41 @@ class Session:
         input_paths: Sequence[Union[str, bytes, os.PathLike]],
         synthesis: Optional[Type[BaseKorg]] = Korg
     ):
-        self.input_paths = expand_input_paths(input_paths)
+        # Read spectra.
+        self.spectra, self.n_orders_per_spectrum = _read_spectra(input_paths)
         self._synthesis = synthesis
         return None
+
     
     @cached_property
     def synthesis(self):
-        # If ._synthesis is a class, instantiate it
-        if isinstance(self._synthesis, type): 
-            return self._synthesis()
-        else:
-            return self._synthesis
+        return self._synthesis() if isinstance(self._synthesis, type) else self._synthesis
     
     
-    @cached_property
-    def spectra(self):
-        spectra = []
-        for input_path in self.input_paths:            
-            try:
-                wavelength, flux, ivar, meta = Spectrum1D.read_fits_multispec(input_path)
-            except:
-                #    wavelength, flux, ivar, meta = Spectrum1D.read_apogee(input_path)
-                from astropy.io import fits
-                with fits.open(input_path) as image:
-                    flux = image[0].data
-                    wavelength = image[0].header["CRVAL1"] + image[0].header["CDELT1"] * np.arange(image[0].header["NAXIS1"])
-                    ivar = np.ones_like(flux)
-                    
-                wavelength = [wavelength]            
-                flux = [flux]
-                ivar = [ivar]
-                meta = {"input_path": input_path}
-                
-            for i in range(len(wavelength)):
-                spectra.append([wavelength[i], flux[i], ivar[i], meta])
-        return spectra
-    
-    
-    def _get_closest_spectrum_index(self, wavelength):
-        return get_closest_spectrum_index(self, wavelength)
+    def get_spectrum_indices(self, spectral_order):
+        N = np.cumsum(self.n_orders_per_spectrum)
+        spectrum_index = N.searchsorted(spectral_order + 1)
+        order_index = int(spectral_order - np.sum(self.n_orders_per_spectrum[:spectrum_index]))
+        if order_index == 0 and self.n_orders_per_spectrum[spectrum_index] == 1:
+            order_index = None
+        return (spectrum_index, order_index)
+        
+
+    def get_spectral_order(self, spectral_order=0):
+        spectrum_index, order_index = self.get_spectrum_indices(spectral_order)
+        spectrum = self.spectra[spectrum_index]
+        λ, flux, ivar = (spectrum.λ, spectrum.flux, spectrum.ivar)
+        if order_index is not None:
+            λ, flux, ivar = (λ[order_index], flux[order_index], ivar[order_index])
+        return (λ, flux, ivar, spectrum.meta)            
         
     
-    
+    def _get_closest_spectrum_index(self, wavelength):
+        """Return the spectrum in the session closest to the wavelength."""
+        mean_wavelengths = [np.mean(wl) for wl, *_ in self.spectra]
+        return np.argmin(np.abs(np.array(mean_wavelengths) - wavelength))
+
+            
     def get_spectrum(self, index=0, rest_frame=False, rectified=False, **kwargs):
         
         _wavelength, _flux, _ivar, meta = self.spectra[index]
@@ -93,6 +69,9 @@ class Session:
     def get_continuum(self, index=0, **kwargs):
         return 1
     
+    
+
+    
 
     def set_v_rel(self, v_rel):
         self.v_rel = v_rel
@@ -107,61 +86,24 @@ class Session:
                 return self.v_rel
             except:
                 return 0
-            
     
-    #def measure_relative_velocity(self, index, template_path, continuum_kwargs=None, v_lim=(-250, 250), deg=1, N=10, **kwargs):
-        
-        
+    # Fit NMF model + continuum?
+    
+    
+    # Fit EW of some line, perhaps given some NMF model for setting masks?
+    
 
-    # Curve-of-growth analysis
-    def cog_read_linelist(self, line_list_path, format="vald", **kwargs):            
-        self.cog_linelist = self.synthesis.read_linelist(
-            line_list_path, 
-            format=format,
-            **kwargs
-        )
-        return self.cog_linelist
-    
-    
-    def cog_fit_profiles(self):
-        # just assign EWs to everything in the .linelist        
-        ...
-        
-    
-    def cog_interpolate_atmosphere(self, Teff, logg, metals_H, alpha_H):
-        self.cog_A_X = self.synthesis.format_A_X(metals_H, alpha_H)
 
-        self.cog_atm = self.synthesis.interpolate_marcs(
-            Teff, logg, self.cog_A_X
-        )
-        
-        
-    def cog_ews_to_abundances(self, ews, **kwargs):
-        return self.synthesis.ews_to_abundances(
-            self.cog_atm,
-            self.cog_linelist,
-            self.cog_A_X,
-            ews,
-            **kwargs
-        )
-        
-    
-    
-    def cog_solve_stellar_parameters(
-        self,
-        ews,
-        Teff0=5000.0, 
-        logg0=3.5, 
-        vmic0=1.0, 
-        metallicity0=0.0, 
-        **kwargs
-    ):
-        return self.synthesis.ews_to_stellar_parameters(
-            self.cog_linelist, 
-            ews, 
-            Teff0=Teff0,
-            logg0=logg0,
-            vmic0=vmic0,
-            metallicity0=metallicity0,
-            **kwargs
-        )
+def _read_spectra(input_paths):
+    spectra, n_orders_per_spectrum = ([], [])
+    for path in input_paths:
+        for kind in (Spectrum, SpectrumCollection):
+            try:
+                spectra.append(kind.read(expand_path(path)))
+            except:
+                pass
+            else:
+                break
+        else:
+            raise ValueError(f"Could not read {path}")
+    return (spectra, n_orders_per_spectrum)

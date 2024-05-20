@@ -2,19 +2,19 @@
 import os
 import sys
 
-from Qt.QtCore import Qt, QTranslator
-from Qt.QtWidgets import QApplication
-from Grok.utils import suppress
-
-with suppress():
-    # No advertising, please.
-    from qfluentwidgets import FluentTranslator
-
-from Grok.app.common.config import cfg
-from Grok.app.view.main_window import MainWindow
-
 
 def main():
+    from Qt.QtCore import Qt, QTranslator
+    from Qt.QtWidgets import QApplication
+    from Grok.utils import suppress
+
+    with suppress():
+        # No advertising, please.
+        from qfluentwidgets import FluentTranslator
+
+    from Grok.app.common.config import cfg
+    from Grok.app.view.main_window import MainWindow
+    
         
     # enable dpi scale
     if cfg.get(cfg.dpiScale) == "Auto":
@@ -31,6 +31,7 @@ def main():
     app = QApplication(sys.argv)
     app.setAttribute(Qt.AA_DontCreateNativeWidgetSiblings)
 
+    '''
     # internationalization
     locale = cfg.get(cfg.language).value
     translator = FluentTranslator(locale)
@@ -39,7 +40,8 @@ def main():
 
     app.installTranslator(translator)
     app.installTranslator(galleryTranslator)
-
+    '''
+    
     # create main window
     w = MainWindow(sys.argv[1:])
     w.show()
