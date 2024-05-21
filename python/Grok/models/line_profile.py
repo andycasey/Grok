@@ -7,7 +7,7 @@ from Grok.specutils.utils import ivar_to_sigma
 from Grok.models.continuum_basis import ContinuumBasis
 
 
-class LineProfileModel:
+class BaseLineProfile:
 
     def __init__(
         self,
@@ -24,21 +24,6 @@ class LineProfileModel:
         return None
         
 
-    def get_bounds(self, σ_max=10, amplitude_max=1, **kwargs):
-        bounds = [
-            (self.λ - self.λ_tolerance, self.λ + self.λ_tolerance),
-            (0, σ_max),
-            (0, amplitude_max)
-        ]
-        if self.continuum_basis is not None:
-            bounds.extend([(-np.inf, +np.inf)] * self.continuum_basis.num_parameters)
-        return np.atleast_2d(bounds).T
-    
-    
-    def _profile(self, λ, μ, σ, amplitude, *_, **__):
-        return 1 - amplitude * stats.norm.pdf(λ, loc=μ, scale=σ)
-    
-    
     def fit(self, spectrum: Spectrum, initial: Optional[float] = None, op_kwds: Optional[dict] = None, **kwargs):
         
         # Get the data.
@@ -46,23 +31,14 @@ class LineProfileModel:
         λ, flux, ivar = (spectrum.λ[si:ei], spectrum.flux[si:ei], spectrum.ivar[si:ei])
         sigma = ivar_to_sigma(ivar)
                     
-        # Define a callable function to optimize (which should match __call__!), and set initial values
-        p0 = [self.λ, 0.1, 0.2] ## MAGIC
-        if self.continuum_basis is None:
-            f = self._profile
-        else:
-            A = self.continuum_basis.design_matrix(λ)
-            def f(λ, *θ):
-                return (A @ θ[3:]) * self._profile(λ, *θ)
-            
-            # TODO: consider different logic for initial guess if we have a NMF model            
-            p0.extend(self.continuum_basis.get_initial_guess(A, flux, ivar))
-            
+        # Define a (faster) callable function to optimize (which should match __call__!), and set initial values
+        f, p0 = self.get_callable_and_initial_guess(λ, flux, ivar)
+                        
         kwds = dict(xtol=1e-12, ftol=1e-12, verbose=0)
         kwds.update(op_kwds or {})                        
             
         popt, pcov, infodict, mesg, ier = op.curve_fit(
-            self.__call__,
+            f,
             λ,
             flux,
             p0=p0,
@@ -82,7 +58,39 @@ class LineProfileModel:
             return self._profile(λ, *θ)
         else:
             A = self.continuum_basis.design_matrix(λ)
-            return (A @ θ[3:]) * self._profile(λ, *θ)
+            return (A @ θ[self.num_profile_parameters:]) * self._profile(λ, *θ)
+        
+    
+        
+class GaussianLineProfile(BaseLineProfile):
+    
+    num_profile_parameters = 3
+    
+    def get_callable_and_initial_guess(self, λ, flux, ivar):        
+        p0 = [self.λ, 0.1, 0.2]
+        if self.continuum_basis is not None:
+            A = self.continuum_basis.design_matrix(λ)
+            # TODO: consider different logic for initial guess if we have a NMF model                        
+            p0.extend(self.continuum_basis.get_initial_guess(A, flux, ivar))
+            def f(λ, *θ):
+                return (A @ θ[self.num_profile_parameters:]) * self._profile(λ, *θ)            
+        else:
+            f = self._profile                
+        return (f, p0)
+            
+    
+    def get_bounds(self, σ_max=10, amplitude_max=1, **kwargs):
+        bounds = [
+            (self.λ - self.λ_tolerance, self.λ + self.λ_tolerance),
+            (0, σ_max),
+            (0, amplitude_max)
+        ]
+        if self.continuum_basis is not None:
+            bounds.extend([(-np.inf, +np.inf)] * self.continuum_basis.num_parameters)
+        return np.atleast_2d(bounds).T
+        
+    def _profile(self, λ, μ, σ, amplitude, *_, **__):
+        return 1 - amplitude * stats.norm.pdf(λ, loc=μ, scale=σ)
         
     @property
     def ew(self):
@@ -96,13 +104,13 @@ class LineProfileModel:
     @property
     def u_ew(self):
         """Return the uncertainty on the equivalent width of the fitted profile in milliAngstroms (mÅ)."""
-        return 1000 * self.theta_cov_[2, 2]**0.5
+        return 1000 * self.theta_cov_[2, 2]**0.5        
+    
 
-    
-        
-    
-    
-#GaussianProfile(λ=3423.0).fit(spectra, initial=stellar_absorption_model)
+
+# THINKOS:
+# - VoigtLineProfile sub-class
+# - can we avoid having `num_profile_parameters` as a class attribute?
 
 
 
@@ -114,7 +122,7 @@ if __name__ == "__main__":
     
     spectrum = Spectrum.read("/Users/andycasey/software/smhr/smh/data/spectra/hd122563.fits")
     
-    f = LineProfileModel(λ=4736.773, continuum_basis=PolynomialBasis(1)).fit(spectrum)
+    f = GaussianLineProfile(λ=4736.773, continuum_basis=PolynomialBasis(1)).fit(spectrum)
     
     import matplotlib.pyplot as plt
     fig = spectrum.plot()
