@@ -2,16 +2,12 @@
 import numpy as np
 from typing import Sequence, Optional, Union
 from astropy.nddata import NDIOMixin
-from astropy.constants import c
 from astropy import units as u
 from specutils.utils.wcs_utils import air_to_vac
-
-C_KM_S = c.to("km/s").value
+from Grok.specutils.utils import apply_relativistic_velocity_shift
 
 # TODO: put elsewhere
-def apply_relativistic_doppler_shift(λ, v):
-    beta = v / C_KM_S
-    return λ * np.sqrt((1 + beta) / (1 - beta))
+
 
 class Spectrum(NDIOMixin):
     
@@ -51,11 +47,11 @@ class Spectrum(NDIOMixin):
     
     @property
     def λ_rest(self):
-        return self.λ * self._relativistic_doppler_shift
+        return apply_relativistic_velocity_shift(self.λ, self.v_rel)
     
     @property
     def λ_rest_vacuum(self):
-        return self.λ_vacuum * self._relativistic_doppler_shift
+        return apply_relativistic_velocity_shift(self.λ_vacuum, self.v_rel)
         
     @property
     def λ_vacuum(self):
@@ -76,9 +72,20 @@ class Spectrum(NDIOMixin):
         return self.λ.size
 
     def apply_velocity_shift(self, v):
-        beta = v / C_KM_S
-        scale = np.sqrt((1 + beta) / (1 - beta))     
-        self.λ *= scale
+        self.λ = apply_relativistic_velocity_shift(self.λ, v)
+        return None
+
+
+    def plot(self, ax=None):
+        if ax is None:
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots()
+        else:
+            fig = ax.figure
+            
+        ax.plot(self.λ, self.flux, c='k')
+        return fig
+        
 
 class SpectrumCollection(Spectrum):
     pass

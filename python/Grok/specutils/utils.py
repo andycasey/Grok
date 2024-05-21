@@ -3,21 +3,38 @@
 
 """ General utilities for dealing with spectra. """
 
-from __future__ import (division, print_function, absolute_import,
-                        unicode_literals)
-
-__all__ = ["calculate_fractional_overlap", "find_overlaps"]
+from astropy.constants import c
 
 import numpy as np
 import time
 
-def e_flux_to_ivar(e_flux):
+LARGE = 1e10
+SMALL = 1/LARGE
+C_KM_S = c.to("km/s").value
+
+
+def sigma_to_ivar(sigma):
     with np.errstate(divide='ignore'):
-        return e_flux**-2
+        ivar = sigma**-2
+        ivar[sigma >= LARGE] = 0
+        return ivar
+
+def ivar_to_sigma(ivar):
+    with np.errstate(divide='ignore'):
+        sigma = ivar**-0.5
+        sigma[~np.isfinite(sigma)] = LARGE
+        return sigma
+    
 
 def get_meta_dict(hdulist):
     return dict(hdulist[0].header)
 
+def compute_linear_dispersion(crval, cdelt, naxis, crpix=1, ltv=0):
+    return crval + (np.arange(naxis) + 1 - crpix) * cdelt - ltv * cdelt
+
+def apply_relativistic_velocity_shift(λ, v):
+    beta = v / C_KM_S
+    return λ * np.sqrt((1 + beta) / (1 - beta))
 
 def compute_dispersion(aperture, beam, dispersion_type, dispersion_start,
     mean_dispersion_delta, num_pixels, redshift, aperture_low, aperture_high,

@@ -5,7 +5,9 @@ from specutils.io.registers import data_loader
 from specutils.io.parsing_utils import read_fileobj_or_hdulist
 
 from Grok.specutils.spectrum import (Spectrum, SpectrumCollection)
-from Grok.specutils.utils import concatenate_wat_headers, compute_dispersion, e_flux_to_ivar, get_meta_dict
+from Grok.specutils.utils import (
+    concatenate_wat_headers, compute_linear_dispersion, compute_dispersion, sigma_to_ivar, get_meta_dict
+)
 
 
 # Identifiers
@@ -16,15 +18,56 @@ def identify_multispec(origin, *args, **kwargs):
         wat0_001 = hdulist[0].header["WAT0_001"].lower()
         return (ctype1.startswith("multispe") or wat0_001 == "system=multispec")
     
-def identify_pepsi(origin, *args, **kwargs):
+def identify_pepsi_spectrum(origin, *args, **kwargs):
     with read_fileobj_or_hdulist(*args, memmap=False, **kwargs) as hdulist:
         return hdulist[0].header.get("INSTRUME") == "PEPSI"
+
+def identify_generic_spectrum(origin, *args, **kwargs):
+    with read_fileobj_or_hdulist(*args, memmap=False, **kwargs) as hdulist:
+        # Must have CRRVAL1 and CDELT1
+        return (
+            hdulist[0].header.get("CRVAL1", None) is not None
+        and hdulist[0].header.get("CDELT1", None) is not None
+        and hdulist[0].data is not None
+        )
+        
+# Loaders
+
+@data_loader(
+    "generic",
+    dtype=Spectrum,
+    identifier=identify_generic_spectrum,
+    extensions=["fits"]
+)
+def generic(path, **kwargs):
+    with read_fileobj_or_hdulist(path, **kwargs) as hdulist:
+        f = hdulist[0].data
+        ivar = np.ones_like(f)
+        mask = np.zeros_like(f, dtype=bool)
+        meta = get_meta_dict(hdulist)
+        
+        λ = compute_linear_dispersion(
+            hdulist[0].header["CRVAL1"],
+            hdulist[0].header["CDELT1"],
+            hdulist[0].header.get("NAXIS1", f.size),
+            crpix=hdulist[0].header.get("CRPIX1", 1),
+            ltv=hdulist[0].header.get("LTV1", 0)
+        )            
+            
+    return Spectrum(
+        λ=λ,
+        flux=f,
+        ivar=ivar,
+        mask=mask,
+        meta=meta,
+        **kwargs,
+    )        
 
 
 @data_loader(
     "PEPSI", 
     dtype=Spectrum,
-    identifier=identify_pepsi, 
+    identifier=identify_pepsi_spectrum, 
     extensions=["nor", "avr"]
 )
 def pepsi(path, **kwargs):
@@ -83,12 +126,12 @@ def multispec(path, **kwargs):
             md5_hash = md5(";".join([v for k, v in hdulist[0].header.items() \
                                         if k.startswith("BANDID")]).encode("utf-8")).hexdigest()            
             exts = {
-                "0da149208a3c8ba608226544605ed600": (1, 2, e_flux_to_ivar), # CarPy MIKE product
-                "e802331006006930ee0e60c7fbc66cec": (1, 2, e_flux_to_ivar), # Old CarPy MIKE product
-                "6b2c2ec1c4e1b122ccab15eb9bd305bc": (1, 2, e_flux_to_ivar), # CarPy MAGE product
-                "a4d8f6f51a7260fce1642f7b42012969": (0, 2, e_flux_to_ivar), # IRAF 3 band product
+                "0da149208a3c8ba608226544605ed600": (1, 2, sigma_to_ivar), # CarPy MIKE product
+                "e802331006006930ee0e60c7fbc66cec": (1, 2, sigma_to_ivar), # Old CarPy MIKE product
+                "6b2c2ec1c4e1b122ccab15eb9bd305bc": (1, 2, sigma_to_ivar), # CarPy MAGE product
+                "a4d8f6f51a7260fce1642f7b42012969": (0, 2, sigma_to_ivar), # IRAF 3 band product
                 "148aa0c459c8085f7461a519b1a060e5": (0, None, lambda x: x), # IRAF 1 band product
-                "2ab648afed96dcff5ccd10e5b45730c1": (1, 2, e_flux_to_ivar), # DuPont product
+                "2ab648afed96dcff5ccd10e5b45730c1": (1, 2, sigma_to_ivar), # DuPont product
             }
             
             try:
