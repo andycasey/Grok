@@ -2,130 +2,160 @@
 import numpy as np
 import warnings
 from scipy import stats, optimize as op
-from typing import Optional, Sequence, Tuple
+from types import MappingProxyType
+from typing import Optional, Sequence, Tuple, Dict
+from collections import OrderedDict
 
+from Grok.models.linear_basis import LinearBasis, RadialBasis, PolynomialBasis, NeighbouringRadialBasis
 
-
-from Grok.models.continuum_basis import ContinuumBasis, RadialBasis, PolynomialBasis
-
-
-class BaseSpectralLineModel:
-    pass
     
 
+# NOTES:
+#   I think I would prefer to have a single SpectralLineModel and then provide some basis for nearby absorption
+#   (which could be a radial basis or a NMF basis), but the problem is that when we are fitting with a radial
+#   basis, we are fitting the line that we care about ALSO with the radial basis, whereas at the moment with
+#   the NMF model we are fitting a profile. We could change this so that the NMF model ALSO uses a radial basis
+#   to fit the EW of the line that we care about, OR we could change it so the RBF model isn't actually linear
+#   any more and it uses a profile function to fit the line.
 
-class RBFSpectralLineModel(BaseSpectralLineModel):
+#   The NMF and RBF sets are just to represent the nearby absorption, so we should just separate that from the
+#   main thing and REQUIRE that the central line absorption that we care about uses a RadialBasis
+
+
+class LinearSpectralLineModel:
     
-    """
-    Fit an absorption line and the surrounding absorption features using a radial basis function model.
-    """
+    """Model an absorption line in a spectrum as a sum of linear components."""
     
     def __init__(
         self,
         λ,
-        rbf_centroids: Optional[Sequence[float]] = None,
-        n_rbf: int = 101,
-        sigma: Optional[float] = 0.05,
-        window: Optional[float] = 2,
-        continuum_basis: Optional[ContinuumBasis] = None,
-        mask_regions: Optional[Sequence[Tuple[float, float]]] = None,
+        line_basis: Optional[LinearBasis] = RadialBasis,
+        continuum_basis: Optional[LinearBasis] = PolynomialBasis(0),
+        absorption_basis: Optional[LinearBasis] = None,
     ):
-        self.λ = λ
-        self.sigma = sigma
-        self.window = window
-        self.continuum_basis = continuum_basis
-        self.mask_regions = mask_regions
+        """
+        Model an absorption line in a spectrum.
         
-        if rbf_centroids is None:        
-            self.n_rbf = n_rbf
-            self.rbf_centroids = None
-            if (self.n_rbf % 2) == 0:
-                raise ValueError("Number of RBF basis must be odd, or supply your own `rbf_centroids`.")                    
-        elif rbf_centroids is not None and n_rbf is not None:
-            raise ValueError("Supply either `rbf_centroids` or `n_rbf`, not both.")
-        else:
-            self.rbf_centroids = np.array(rbf_centroids)
-            self.n_rbf = len(self.rbf_centroids)
+        :param λ: 
+            The central wavelength of the absorption line.
+        
+        :param line_basis: [optional]
+            The basis to model the absorption line. 
             
+        :param continuum_basis: [optional]
+            The basis to model the continuum. 
+        
+        :param absorption_basis: [optional]
+            The basis to model nearby absorption features in the spectrum. 
+        """
+        
+        if not isinstance(line_basis, LinearBasis):
+            if line_basis is RadialBasis: # we know what to do here.                
+                σ = 0.05 # default to something sensible.                
+                offsets = np.linspace(-2, 2, 5)
+                line_basis = RadialBasis(offsets * σ + λ, scales=σ)
+
+            else:
+                raise TypeError("`line_basis` must be an instance that is a sub-class of `LinearBasis`")
+        
+        if continuum_basis is not None and not isinstance(continuum_basis, LinearBasis):
+            raise TypeError("`continuum_basis` must be an instance that is a sub-class of `LinearBasis`")
+        
+        if absorption_basis is not None and not isinstance(absorption_basis, LinearBasis):
+            raise TypeError("`absorption_basis` must be an instance that is a sub-class of `LinearBasis`")
+        
+        all_bases = [
+            ("line", line_basis),
+            ("absorption", absorption_basis),
+            ("continuum", continuum_basis)
+        ]                
+        self.λ = λ
+        self.bases = MappingProxyType({ label: base for label, base in all_bases if base is not None })
         return None
-    
+
+
     @property
     def n_parameters(self):
-        n = self.n_rbf 
-        try:
-            n += self.continuum_basis.n_parameters
-        except AttributeError:
-            None
-        finally:
-            return n
+        """The total number of model parameters."""
+        return sum(v.n_parameters for v in self.bases.values())
 
     
-    def _prepare_fit(self, spectrum):
+    def prepare_fit(self, spectrum, window: Optional[float] = 2):
+        """
+        Given a spectrum and a window to fit around, prepare the data and design matrices.
+        
+        :param spectrum:
+            The spectrum to fit.
+        
+        :param window:
+            The window to fit around the central wavelength. The full fitting domain is twice this window.
+        """
+        
         # Get the data.        
-        si, ei = spectrum.λ.searchsorted([self.λ - self.window, self.λ + self.window]) + [0, 1]
+        si, ei = spectrum.λ.searchsorted([self.λ - window, self.λ + window]) + [0, 1]
         λ, Y, Cinv = (spectrum.λ[si:ei], spectrum.flux[si:ei], np.diag(spectrum.ivar[si:ei]))
     
-        if self.rbf_centroids is None:            
-            # Build design matrices.    
-            rbf_centroids = np.hstack([
-                np.linspace(λ[0], self.λ, self.n_rbf // 2 + 1)[:-1],
-                np.linspace(self.λ, λ[-1], self.n_rbf // 2 + 1)            
-            ])
-        else:
-            rbf_centroids = self.rbf_centroids
-            
-        rb = RadialBasis(rbf_centroids, self.sigma)
-        A_rb = rb.get_design_matrix(λ)
-        bounds = [(0, np.inf)] * rb.n_parameters
-        if self.continuum_basis is not None:
-            A_c = self.continuum_basis.get_design_matrix(λ)
-            bounds.extend(self.continuum_basis.get_bounds())
-        else:
-            A_c = np.empty((λ.size, 0))
+        # Build design matrices and get bounds.
+        args, bounds = ([], [])
+        for base in self.bases.values():
+            args.append(base.get_design_matrix(λ, self.λ))
+            bounds.extend(base.get_bounds())
         
-        A = np.hstack([A_rb, A_c])
-        return (λ, Y, Cinv, rb, A_rb, A_c, A, np.atleast_2d(bounds).T)
-                
-                
-    def _fit_least_squares(self, A, flux, ivar, Lambda, full_output=False):
-        # Fit the model.
-        ATCinv = A.T * ivar
-        ATCinvA = ATCinv @ A
-        ATCinvY = ATCinv @ flux
-        R = Lambda * np.ones(A.shape[1])
-        R[self.n_rbf:] = 0 # do not regularize the continuum coefficients
-        central = 3
-        R[self.n_rbf // 2 - central:self.n_rbf // 2 + central] = 0 # do not regularize the central few bases 
-        R = np.diag(R)
+        A = np.hstack(args)
+        bounds = np.atleast_2d(bounds)
 
-        θ = np.linalg.solve(ATCinvA + R, ATCinvY)
-        
-        if full_output:
-            return (θ, ATCinv, ATCinvA, ATCinvY)
-        return θ
-            
+        return (λ, Y, Cinv, A, bounds)
     
-    def get_feature_weight_matrix(self, Λ, ignore_central_rbf=3, **kwargs):
-        W = Λ * np.ones(self.n_parameters)
-        W[self.n_rbf:] = 0 # don't regularize continuum coefficients
-        W[self.n_rbf // 2 - ignore_central_rbf:self.n_rbf // 2 + ignore_central_rbf] = 0 # don't regularize central RBF kernels
+    
+    def get_feature_weight_matrix(self, Λ):
+        """
+        Given a dictionary of regularization strengths, return a diagonal matrix of feature weights.
+        
+        :param Λ:
+            A dictionary of regularization strengths for each base, with the base name as the dictionary key,
+            and the regularization strength(s) as the value. The regularization strength can be a float, or
+            an `n`-length array, where `n` is the number of parameters in that base.
+        """
+        Λ = Λ.copy()
+        W = np.hstack([Λ.pop(k, 0) * np.ones(v.n_parameters) for k, v in self.bases.items()])
+        unknown_bases = set(Λ).difference({"line", "absorption", "continuum"})
+        if len(unknown_bases) > 0:
+            warnings.warn(f"Ignoring regularization strengths for unknown base(s): {', '.join(unknown_bases)}")
         return np.diag(W)
     
         
     def fit(
         self,
         spectrum,
-        Λ: Optional[float] = 1e6,
-        ax=None,
-        raise_exception=False,
+        window: Optional[float] = 2,
+        Λ: Optional[Dict[str, float]] = MappingProxyType(dict(line=0, absorption=0, continuum=0)),
+        raise_exception: Optional[bool] = False,
         **kwargs
     ):
-        λ, Y, Cinv, locations, A_rb, A_c, A, bounds = self._prepare_fit(spectrum)
+        """
+        Fit the absorption line model to a spectrum.
         
-        W = self.get_feature_weight_matrix(Λ, **kwargs)
+        :param spectrum:
+            The spectrum to fit.
+            
+        :param window: [optional]
+            The window to fit around the central wavelength. The full fitting domain is twice this window.
+        
+        :param Λ: [optional]
+            A dictionary of regularization strengths for each base, with the base name as the dictionary key,
+            and the regularization strength as the value. The regularization strength can be a float, or
+            an `n`-length array, where `n` is the number of parameters in that base.
+        
+        :param raise_exception: [optional]
+            Raise an exception if the optimization fails.
+        """
+        
+        λ, Y, Cinv, A, bounds = self.prepare_fit(spectrum, window)
+        
+        W = self.get_feature_weight_matrix(Λ)
         
         ATCinv = A.T @ Cinv        
-        fit = op.lsq_linear(ATCinv @ A + W, ATCinv @ Y, bounds) 
+        fit = op.lsq_linear(ATCinv @ A + W, ATCinv @ Y, bounds.T) 
         
         if not fit.success:
             if raise_exception:
@@ -133,166 +163,42 @@ class RBFSpectralLineModel(BaseSpectralLineModel):
             else:
                 warnings.warn(fit.message)
         
-        # Get the continuum and line components.
-        pred_absorption = 
-        pred_continuum = A_c @ fit.x[self.n_rbf:]
-        
-        
-        central = 3
+        # Get predictions from each base?
+        base_predictions, si, y_pred = (OrderedDict(), 0, np.zeros_like(Y))
+        for name, base in self.bases.items():
+            sliced = slice(si, si + base.n_parameters)
+            base_predictions[name] = A[:, sliced] @ fit.x[sliced]
+            y_pred += base_predictions[name]
+            si += base.n_parameters
 
-        if ax is None:
-            fig, ax = plt.subplots()
+        continuum = base_predictions.get("continuum")
+
+
+        fig, ax = plt.subplots()
+        ax.plot(λ, Y, c='k')
+        ax.plot(λ, y_pred, c="tab:red")
+        try:
+            ax.axvspan(self.bases["absorption"].lower, self.bases["absorption"].upper, facecolor="#cccccc", zorder=-1)
+        except:
+            None
             
-        
-        ax.plot(λ, flux, c='k')
-        ax.plot(λ, A @ θ, c="tab:blue")
-        
-        central_mask = np.zeros(θ.size, dtype=bool)
-        central_mask[self.n_rbf // 2 - central:self.n_rbf // 2 + central] = True
-        central_mask[self.n_rbf:] = True
-        ax.plot(λ, A[:, central_mask] @ θ[central_mask], c="tab:green")
-        
-        ax.set_ylim(0.5, 1.1)
-        
-        # find contiguous places
-        is_non_zero = (θ[:self.n_rbf] > (1e-3)) # anything more than 1 mA
-        edges = 1 + np.where(np.diff(is_non_zero))[0]
-        indices = np.sort(np.hstack([
-            0, np.repeat(edges, 2), self.n_rbf 
-        ]).reshape((-1, 2)))
-        
-        non_zero_indices = indices[0 if is_non_zero[0] else 1::2]
-        for si, ei in non_zero_indices:
-            assert is_non_zero[si:ei].all()
-            assert si != ei
-            v = np.sum(locations[si:ei] * θ[si:ei] / np.sum(θ[si:ei]))
-            ew = 1000 * np.sum(θ[si:ei])
-            if ew > 5:
-                print(f"{si} {ei} {v:.3f} {ew:.3f}")
-                ax.axvline(v, c="#666666", ls=":", zorder=-1)
-                ax.axvspan(locations[si], locations[ei-1], color="#cccccc", alpha=0.5, zorder=-1)
-
-        #for loc in locations:
-        #    ax.axvline(loc, c="tab:red", lw=0.5, zorder=-1)
-        
-        ax.axvline(λ_line, c="tab:blue")
-        print(result)
-        print(θ)
-        return None
-        
-    
-    def old_code_for_fit(
-        self,
-        spectrum,
-        op_kwds: Optional[dict] = None,
-        Lambda: Optional[float] = 1e3,
-        regularize_covariance: Optional[bool] = False,
-        ax=None,
-        **kwargs
-    ):
-        λ, flux, ivar, locations, A_rb, A_c, A, bounds = self._prepare_fit(spectrum)
-
-        kwds = dict(max_iter=10_000)
-        kwds.update(op_kwds or {})
-        
-        # Let's get a bounded unregularized estimate that does not account for uncertainties.
-        # This seemed like a good idea but was sometimes bad in practice. 
-        # going to use he least squares result instead, even though it is unbounded and a different regularization scheme (L1 vs L2)
-        #p_init = op.lsq_linear(A, flux, bounds, **kwds)        
-        # Also, it turns out lsq_linear is very slow...
-
-        x0 = self._fit_least_squares(A, flux, ivar, Lambda)
-
-        # Create a weighting matrix for regularization
-        central = 3 # don't regularize the central few bases (either side)
-        W = np.sqrt(Lambda) * np.ones_like(x0)
-        W[self.n_rbf:] = 0 # don't regularize continuum coefficients
-        W[self.n_rbf // 2 - central:self.n_rbf // 2 + central] = 0 # don't regularize central RBF kernels
-        
-        corrcoef = np.eye(W.size)
-        if regularize_covariance:
-            for k in range(3, self.n_rbf + 1):
-                rows, cols = np.indices((W.size, W.size))            
-                row_vals = np.diag(rows, k=k)
-                col_vals = np.diag(cols, k=k)
-                corrcoef[row_vals, col_vals] = 1
-                corrcoef[col_vals, row_vals] = 1
-        
-        corrcoef[self.n_rbf:, self.n_rbf:] = 0
-            
-        reg = corrcoef * np.atleast_2d(W).T * np.atleast_2d(W)
+        colors = dict(line="tab:blue", absorption="tab:green", continuum="tab:orange")
+        for name, pred in base_predictions.items():
+            if name == "continuum":
+                ax.plot(λ, pred, label=name, c=colors[name])            
+            else:
+                ax.plot(λ, pred + continuum, label=name, c=colors[name])
                 
-        def loss(θ):
-            χ2 = np.sum((A @ θ - flux)**2 * ivar)
-            #L2 = np.sum(Lambda * W * θ**2)
-            L2 = np.sum(reg @ θ**2)
-            return χ2 + L2
-                
-        def jacobian_loss(θ):
-            d_chi2_d_theta = 2 * A.T @ ((A @ θ - flux) * ivar)
-            d_L2_d_theta = 2 * reg @ θ #2 * Lambda * W * θ
-            return d_chi2_d_theta + d_L2_d_theta 
-        
-        x_opt, nfeval, rc = op.fmin_tnc(
-            loss,
-            x0=x0,
-            fprime=jacobian_loss,
-            bounds=bounds.T,
-            maxfun=10_000,
-            disp=0,
-            messages=0,
-        )
-        
-        result_message = {
-            -1: "Infeasible (lower bound > upper bound)",
-            0: "Local minimum reached (|pg| ~= 0)",
-            1: "Converged (|f_n-f_(n-1)| ~= 0)",
-            2: "Converged (|x_n-x_(n-1)| ~= 0)",
-            3: "Max. number of function evaluations reached",
-            4: "Linear search failed",
-            5: "All lower bounds are equal to the upper bounds",
-            6: "Unable to progress",
-            7: "User requested end of minimization",
-        }.get(rc)
-        
-        if ax is None:
-            fig, ax = plt.subplots()
-            
-        
-        ax.plot(λ, flux, c='k')
-        #ax.plot(λ, A @ p_init.x, c="tab:red")
-        ax.plot(λ, A @ x_opt, c="tab:blue")
-        
-        central_mask = np.zeros(x0.size, dtype=bool)
-        central_mask[self.n_rbf // 2 - central:self.n_rbf // 2 + central] = True
-        central_mask[self.n_rbf:] = True
-        ax.plot(λ, A[:, central_mask] @ x_opt[central_mask], c="tab:green")
-        
+        for line in self.bases["line"].locations:
+            ax.axvline(line, c="tab:blue", ls=":")
+        ax.legend()
         ax.set_ylim(0.5, 1.1)
-        
-        print(f"{loss(x0):.3e} -> {loss(x_opt):.3e}")
-        
-        # find contiguous places
-        is_non_zero = (x_opt[:self.n_rbf] > 0)
-        edges = 1 + np.where(np.diff(is_non_zero))[0]
-        indices = np.sort(np.hstack([
-            0, np.repeat(edges, 2), self.n_rbf 
-        ]).reshape((-1, 2)))
-        
-        non_zero_indices = indices[0 if is_non_zero[0] else 1::2]
-        for si, ei in non_zero_indices:
-            assert is_non_zero[si:ei].all()
-            assert si != ei
-            v = np.sum(locations[si:ei] * x_opt[si:ei] / np.sum(x_opt[si:ei]))
-            ew = 1000 * np.sum(x_opt[si:ei])
-            if ew > 5:
-                print(f"{si} {ei} {v:.3f} {ew:.3f}")
-                ax.axvline(v, c="#666666", ls=":", zorder=-1)
-                ax.axvspan(locations[si], locations[ei-1], color="#cccccc", alpha=0.5, zorder=-1)
 
-        print()
         
         
+        
+        
+
     
 # NMF model needs:
 # - wavelengths to compute at
@@ -318,14 +224,77 @@ if __name__ == "__main__":
     wls = np.loadtxt("/Users/andycasey/Downloads/linelist_mm.txt", usecols=(0, 1, ))
     wls = wls[:, 0][wls[:, 1].astype(int) == 26]
 
+    from Grok.models.linear_basis import NeighbouringGenericBasis 
+
+    
+    import h5py as h5
+    with h5.File("Grok/bosz-highres-optical-basis-vectors.h5", "r") as fp:
+        λ = fp["vacuum_wavelength"][:]
+        stellar_basis_vectors = fp["stellar_basis_vectors"][:]
+        meta = dict(fp["stellar_basis_vectors"].attrs)       
+        try:
+            telluric_basis_vectors = fp["telluric_basis_vectors"][:]
+        except:
+            telluric_basis_vectors = None        
+    
+
+    def vacuum_to_air(lambdas):
+        """
+        Convert vacuum wavelengths to air.
+
+        The formula from Donald Morton (2000, ApJ. Suppl., 130, 403) is used for the 
+        refraction index, which is also the IAU standard.
+
+        As per https://www.astro.uu.se/valdwiki/Air-to-vacuum%20conversion
+
+        :param lambdas:
+            The vacuum wavelengths.
+        """
+        s = 10**4 / lambdas
+        n = 1 + 0.0000834254 + 0.02406147 / (130 - s**2) + 0.00015998 / (38.9 - s**2)
+        return (lambdas / n) 
+    
+    
+    '''
+    nmf_basis = NeighbouringGenericBasis(vacuum_to_air(λ), -stellar_basis_vectors.T, window=0)
+    si, ei = spectrum.λ.searchsorted([wls[0], wls[-1]])    
+    A = -nmf_basis.get_design_matrix(spectrum.λ[si:ei], 0)
+    bounds = np.array([(0, np.inf)] * A.shape[1]).T    
+    Y = 1 - spectrum.flux[si:ei]
+    Cinv = np.eye(Y.size)
+    lhs = A.T @ Cinv @ A + 1e-4 * np.eye(A.shape[1])
+    rhs = A.T @ Cinv @ A @ Y
+    result = op.lsq_linear(lhs, rhs, bounds)
+    '''
+    
+    """
+    fig, ax = plt.subplots()
+    ax.plot(spectrum.λ[si:ei], spectrum.flux[si:ei], c='k')
+    ax.plot(spectrum.λ[si:ei], 1 - A @ result.x, c="tab:red")
+    """
+
+    #nmf_basis = NeighbouringGenericBasis(vacuum_to_air(λ), -stellar_basis_vectors.T, X=result.x, X_tol=1e-2, window=0.5)
+
     from tqdm import tqdm
     for j, λ_line in enumerate(tqdm(wls)):
 
-        fig, axes = plt.subplots(2, 1, sharex=True, sharey=True)
+        #fig, axes = plt.subplots(2, 1, sharex=True, sharey=True)
 
         #model = RBFSpectralLineModel(λ_line, continuum_basis=PolynomialBasis(0))
         #model.fit(spectrum, Lambda=1e6, regularize_covariance=True, ax=axes[0])
         
-        model = RBFSpectralLineModel(λ_line, continuum_basis=PolynomialBasis(0))
-        model.fit(spectrum, ax=axes[1], Λ=1e4)
-    
+        #model = RBFSpectralLineModel(λ_line, continuum_basis=PolynomialBasis(0))
+        #model.fit(spectrum, ax=axes[1], Λ=1e4)
+        '''
+        spectrum.flux = 1-spectrum.flux
+        model = SpectralLineModel(4714.393, line_basis=RadialBasis(4714.393, sign=1))
+        model.fit(spectrum)
+        '''
+        
+        absorption_basis = NeighbouringRadialBasis(λ_line - 0.5, λ_line + 0.5)
+        
+        model = LinearSpectralLineModel(λ_line, absorption_basis=absorption_basis)
+        model.fit(spectrum)
+        
+        if j > 15:
+            raise a
