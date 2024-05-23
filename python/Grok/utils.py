@@ -1,4 +1,5 @@
 import os
+import numpy as np
 from contextlib import redirect_stdout, redirect_stderr, contextmanager
 
 @contextmanager
@@ -20,3 +21,8 @@ def expand_paths(input_paths):
     if isinstance(input_paths, (str, bytes)):
         input_paths = [input_paths]
     return tuple(map(expand_path, input_paths))            
+
+
+def overlap(A, B):
+    # get range of values in A and B that overlap
+    return (np.max([A[0], B[0]]), np.min([A[-1], B[-1]]))
