@@ -3,7 +3,7 @@ import numpy as np
 import warnings
 from scipy import optimize as op
 from types import MappingProxyType
-from typing import Optional, Dict, Sequence
+from typing import Optional, Dict, Sequence, Union
 
 from Grok.models.basis import LinearBasis, RadialBasis, PolynomialBasis
 from Grok.models.profile import Profile, GaussianProfile
@@ -18,7 +18,7 @@ class SpectralLineModel:
         self,
         λ,
         profile: Optional[Profile] = GaussianProfile,
-        continuum_basis: Optional[LinearBasis] = None,
+        bases: Optional[Union[LinearBasis, Dict[str, LinearBasis]]] = None,
         mask_regions: Optional[Sequence[Sequence[float]]] = None
     ):
         """
@@ -30,23 +30,29 @@ class SpectralLineModel:
         :param profile: [optional]
             The profile to model the absorption line.
         
-        :param continuum_basis: [optional]
-            The basis to model the continuum.
-        
+        :param bases: [optional]
+            Some optional bases to model the continuum or nearby absorption features. Bases enter multiplicatively.
+            
         :param mask_regions: [optional]
-            A list of regions to exclude from the fit.
+            A list of regions to exclude from the fit. This should be a two-length tuple for each region.
         """
         # TODO: Consider whether to include an absorption_basis option here
         self.λ = λ
         self.profile = profile(λ) if isinstance(profile, type) else profile
-        self.continuum_basis = continuum_basis
+        if bases is None:
+            self.bases = MappingProxyType({})
+        elif isinstance(bases, LinearBasis):
+            self.bases = MappingProxyType({None: bases})
+        else:
+            self.bases = MappingProxyType(bases)            
         self.mask_regions = mask_regions
         return None
 
     @property
     def n_parameters(self):
         """The total number of model parameters."""
-        return self.profile.n_parameters + (0 if self.continuum_basis is None else self.continuum_basis.n_parameters)
+        return self.profile.n_parameters + sum([b.n_parameters for name, b in self.bases.items()])
+    
     
     def get_mask(self, λ):
         """
@@ -58,7 +64,7 @@ class SpectralLineModel:
         mask = np.zeros(λ.size, dtype=bool)
         if self.mask_regions is not None:
             for region in self.mask_regions:
-                mask |= (region[1] >= λ) & (λ >= region[0])
+                mask |= (region[1] >= λ) & (λ >= region[0])            
         return mask
             
     
@@ -73,20 +79,26 @@ class SpectralLineModel:
             The window to fit around the central wavelength. The full fitting domain is twice this window.
         """
         # Get the data.        
-        si, ei = spectrum.λ.searchsorted([self.λ - window, self.λ + window]) + [0, 1]
-        λ, flux, ivar = (spectrum.λ[si:ei], spectrum.flux[si:ei], spectrum.ivar[si:ei])
+        si, ei = spectrum.λ_rest_vacuum.searchsorted([self.λ - window, self.λ + window]) + [0, 1]
+        λ, flux, ivar = (spectrum.λ_rest_vacuum[si:ei], spectrum.flux[si:ei], spectrum.ivar[si:ei])
     
         use = ~self.get_mask(λ)
             
         # Build design matrices and get bounds.
-        bounds = self.profile.get_bounds()        
-        if self.continuum_basis is None:
-            A = None
-        else:
-            A = self.continuum_basis.get_design_matrix(λ[use], self.λ)
-            bounds.extend(self.continuum_basis.get_bounds())
-        
-        return (λ, flux, ivar, use, A, bounds)        
+        A, bounds = ([], self.profile.get_bounds())
+        p0 = list(self.profile.get_initial_guess(λ[use], flux[use], ivar[use]))
+        for name, base in self.bases.items():
+            A.append(base.get_design_matrix(λ[use], self.λ))
+            p0.extend(base.get_initial_guess(λ[use], flux[use]))
+            bounds.extend(base.get_bounds())            
+        return (λ, flux, ivar, use, A, bounds, p0)       
+
+
+    def get_bounds(self, *args, **kwargs):
+        bounds = self.profile.get_bounds()
+        for base in self.bases.values():
+            bounds.extend(base.get_bounds())
+        return bounds
 
 
     def fit(
@@ -108,19 +120,20 @@ class SpectralLineModel:
         :param window: [optional]
             The window to fit around the central wavelength. The full fitting domain is twice this window.
         """
-        λ, flux, ivar, use, A, bounds = self.prepare_fit(spectrum, window)
+        λ, flux, ivar, use, As, bounds, x0 = self.prepare_fit(spectrum, window)
         
-        if A is None:
-            def f(λ, *θ):
-                return self.profile(λ, *θ)
-        else:
-            def f(λ, *θ):
-                n = self.profile.n_parameters
-                return (A @ θ[n:]) * self.profile(λ, *θ[:n])
+        n = self.profile.n_parameters
+            
+        def f(λ, *θ):
+            y = self.profile(λ, *θ[:n])
+            si = n
+            for A, base in zip(As, self.bases.values()):
+                y *= base(λ, θ[si:si+A.shape[1]], A=A)
+                si += A.shape[1]
+            return y
         
         if p0 is None:
-            p0 = np.mean(bounds, axis=1)
-            p0[~np.isfinite(p0)] = 1
+            p0 = x0
                 
         self.θ, self.Σ = op.curve_fit(
             f,
@@ -130,7 +143,14 @@ class SpectralLineModel:
             sigma=ivar_to_sigma(ivar[use]),
             bounds=np.array(bounds).T
         )
-        return None
+        si = 0
+        for A, base in zip(As, self.bases.values()):
+            n = A.shape[1]
+            base.θ = self.θ[si:si+n]
+            base.Σ = self.Σ[si:si+n, si:si+n]
+            si += n        
+        return self
+    
     
     @property
     def equivalent_width(self):
@@ -149,25 +169,65 @@ class SpectralLineModel:
             return None
         else:
             return self.profile.get_equivalent_width_uncertainty(*args)
-            
+    
     
     def __call__(self, λ, *θ, full_output=False):
         θ = self.θ if len(θ) == 0 else θ
         n = self.profile.n_parameters
-        rectified_flux = self.profile(λ, *θ[:n])
+        y = self.profile(λ, *θ[:n])
+
+        y_bases = dict(profile=np.copy(y))
+        si = n
+        for name, base in self.bases.items():
+            A = base.get_design_matrix(λ, self.λ)
+            y_bases[name] = base(λ, θ[si:si + base.n_parameters], A=A)
+            y *= y_bases[name]
+            si += base.n_parameters
         
-        if self.continuum_basis is None:
-            A, continuum = (None, 1)
-        else:
-            A = self.continuum_basis.get_design_matrix(λ, self.λ)
-            continuum = A @ θ[n:]
-        
-        y = continuum * rectified_flux
         if full_output:
-            return (y, rectified_flux, continuum, A)
+            return (y, y_bases)
         return y
         
+    
+    def plot(self, spectrum, ax=None, **kwargs):        
+        λ, flux, *_ = self.prepare_fit(spectrum, **kwargs)
         
+        import matplotlib.pyplot as plt
+        if ax is None:
+            fig, ax = plt.subplots()
+        else:
+            fig = ax.figure
+        
+        y, y_bases = self(λ, full_output=True)
+        ax.plot(λ, flux, c='k', label="Data")
+        ax.plot(λ, y, c="tab:red", label="Model")
+        for name, pred in y_bases.items():
+            ax.plot(λ, pred, label=name)
+            
+        ax.axvline(self.λ, c="#666666", ls=":", zorder=-1, lw=0.5)
+        if self.mask_regions is not None:
+            for s, e in self.mask_regions:
+                ax.axvspan(s, e, 0, 1.2, facecolor="#CCCCCC", zorder=-1, alpha=0.5)
+                
+        try:
+            v = (
+                self.profile.λ - self.profile.λ_tolerance,
+                self.profile.λ + self.profile.λ_tolerance
+            )
+        except:
+            None
+        else:
+            for _ in v:
+                ax.axvline(_, c="#666666", ls="-.", zorder=-1, lw=0.5)
+        
+        ax.set_xlim(λ[[0, -1]])
+        ax.legend()
+        ax.set_xlabel(r"Wavelength $\lambda$ [vacuum; rest]")
+        ax.set_ylabel("Flux")
+        
+        return fig
+
+
 
 class LinearSpectralLineModel:
     
@@ -228,7 +288,7 @@ class LinearSpectralLineModel:
         """The total number of model parameters."""
         return sum(v.n_parameters for v in self.bases.values())
 
-    
+
     def prepare_fit(self, spectrum, window: Optional[float] = 2):
         """
         Given a spectrum and a window to fit around, prepare the data and design matrices.
@@ -241,8 +301,8 @@ class LinearSpectralLineModel:
         """
         
         # Get the data.        
-        si, ei = spectrum.λ.searchsorted([self.λ - window, self.λ + window]) + [0, 1]
-        λ, Y, Cinv = (spectrum.λ[si:ei], spectrum.flux[si:ei], np.diag(spectrum.ivar[si:ei]))
+        si, ei = spectrum.λ_rest_vacuum.searchsorted([self.λ - window, self.λ + window]) + [0, 1]
+        λ, Y, Cinv = (spectrum.λ_rest_vacuum[si:ei], spectrum.flux[si:ei], np.diag(spectrum.ivar[si:ei]))
     
         # Build design matrices and get bounds.
         args, bounds = ([], [])

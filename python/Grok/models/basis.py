@@ -3,6 +3,9 @@ import numpy as np
 from itertools import cycle
 from scipy import stats
 from typing import Union, Optional, Sequence, Dict
+from types import MappingProxyType
+from functools import cached_property
+import warnings
 
 from Grok.specutils.lsf import instrument_lsf_kernel
 from Grok.specutils.utils import apply_relativistic_velocity_shift
@@ -16,27 +19,31 @@ class LinearBasis:
     
     def get_bounds(self, bound=(-np.inf, np.inf)):
         return [bound] * self.n_parameters
-    
-    def _prepare_design_matrix(self, λ):
-        self.design_matrix = self.get_design_matrix(λ)
-    
-    def get_initial_guess(self, λ, flux, ivar):
+        
+    def get_initial_guess(self, λ, flux, ivar=None):
         try:
             A = self.design_matrix
         except AttributeError:            
             A = self.get_design_matrix(λ)
+        
+        if ivar is None:
+            ivar = 1
         ATCinv = A.T * ivar
         return np.linalg.solve(ATCinv @ A, ATCinv @ flux)
     
-    def __call__(self, λ, *θ):
-        try:
-            return self.design_matrix @ θ
-        except AttributeError:            
-            return self.get_design_matrix(λ) @ θ
+    def __call__(self, λ, θ, **kwargs):
+        A = kwargs.get("A", None)
+        if A is None:
+            A = self.get_design_matrix(λ)
+        
+        return np.dot(A, θ)
+    
+    @property
+    def n_parameters(self):
+        raise ValueError("Subclasses must implement this property.")
 
 
-
-class FourierBasis(LinearBasis):    
+class FourierBasis(LinearBasis):
     
     """A set of sine-and-cosine basis functions."""
         
@@ -83,7 +90,6 @@ class PolynomialBasis(LinearBasis):
         return np.vander(λ, self.deg + 1)
     
 
-    
 
 class RadialBasis(LinearBasis):
     
@@ -99,8 +105,7 @@ class RadialBasis(LinearBasis):
     @property
     def n_parameters(self):
         return self.locations.size
-            
-    
+                
     def get_design_matrix(self, λ, *args, **kwargs):
         A = np.zeros((λ.size, self.n_parameters), dtype=float)
         for i, (loc, scale) in enumerate(zip(self.locations, self.scales)):
@@ -234,14 +239,17 @@ class NeighbouringRadialBasis(LinearBasis):
     
 class NMFSpectralBasis(LinearBasis):
     
-    """A linear basis for stellar spectra based on Non-negative Matrix Factorisation (NMF)."""
+    """A linear basis for spectra based on Non-negative Matrix Factorisation (NMF)."""
     
     def __init__(
         self,
         λ_rest_vacuum: Sequence[float],
-        stellar_basis_vectors: Sequence[float],
-        telluric_basis_vectors: Optional[Sequence[float]] = None,
-        meta: Optional[Dict] = None
+        basis_vectors: Sequence[float],
+        mask_regions: Optional[Sequence[float]] = None,
+        v_rel: Optional[float] = None,
+        Ro: Optional[float] = None,
+        Ri: Optional[float] = None,
+        **kwargs,
     ):
         """
         :param λ_rest_vacuum:
@@ -250,56 +258,86 @@ class NMFSpectralBasis(LinearBasis):
             Ironically, for consistency we also require the telluric basis vectors to be defined 
             on this grid: at rest, in a vacuum.
         
-        :param stellar_basis_vectors:
-            A (C, P)-shape array of stellar basis vectors with non-negative entries. Here, C is
+        :param basis_vectors:
+            A (C, )-shape array of basis vectors with non-negative entries. Here, C is
             the number of basis vectors and P is the same as the size of `λ_rest_vacuum`.
             
             These basis vectors should be defined to be in the rest frame, in a vacuum.
-                    
-        :param telluric_basis_vectors: [optional]
-            A (B, P)-shape array of telluric basis vectors with non-negative entries. Here, P is
-            the same as the size of `λ_rest_vacuum`.
+        
+        :param mask_regions: [optional]
+            A list of tuples, each defining a mask region. Each tuple should have two elements:
+            the lower and upper bounds of the mask region.
             
-            Ironically, even though tellurics are defined in the observed frame (usually in air),
-            these telluric basis vectors must be defined in the rest frame, in a vacuum.
-            
-        :param meta: [optional]
-            A metadata dictionary.            
+        :param v_rel: [optional]
+            The relative velocity of the observer with respect to the rest frame of the source.
+        
+        :param Ro: [optional]
+            The spectral resolution of the observations. If `None` is given, then no convolution
+            will take place; the basis vectors will be interpolated.
+        
+        :param Ri: [optional]
+            The spectral resolution of the basis vectors. If `None` is given then it defaults to
+            infinity.        
         """
         self.λ_rest_vacuum = λ_rest_vacuum
-        self.stellar_basis_vectors = stellar_basis_vectors
-        self.telluric_basis_vectors = telluric_basis_vectors
-        self.meta = meta or dict()
-        return None        
+        self.basis_vectors = basis_vectors        
+        self.mask_regions = mask_regions
+        if self.basis_vectors.shape[0] < self.basis_vectors.shape[1]:
+            raise ValueError("I don't believe you have more bases than pixels.")
+        self.taper_region = None
+        self.v_rel = v_rel
+        self.Ro = Ro
+        self.Ri = Ri
+        if Ro is not None and Ri is not None and Ro > Ri:
+            raise ValueError("The output spectral resolution must be lower than the input spectral resolution.")        
+        return None   
+
+
+    def __copy__(self):
+        """Return a copy of this basis."""
+        k = self.__class__(
+            self.λ_rest_vacuum,
+            self.basis_vectors,
+            self.mask_regions,
+            self.v_rel,
+            self.Ro,
+            self.Ri
+        )
+        try:
+            k.θ = self.θ
+        except AttributeError:
+            None
+        return k
     
-    
+
+    def set_taper_region(self, lower, upper, scale=0.05):
+        self.taper_region = (lower, upper, scale)
+        return self
+
+
     @property
     def n_parameters(self):
         """The number of parameters in the model."""
-        n = self.stellar_basis_vectors.shape[0]
-        if self.telluric_basis_vectors is not None:
-            n += self.telluric_basis_vectors.shape[0]
-        return n
-    
-    
+        return self.basis_vectors.shape[1]
+
+
     def get_bounds(self, bound=(0, np.inf)):
         """Return the bounds on the model parameters."""
         return [bound] * self.n_parameters
     
-    def get_design_matrix(
-        self,
-        λ_observed_vacuum: Sequence[float],
-        *args,
-        stellar_v_rel: Optional[float] = None,
-        telluric_v_rel: Optional[float] = None,
-        Ro: Optional[float] = None,
-        Ri: Optional[float] = None,
-        **kwargs
-    ):
+        
+    def get_initial_guess(self, *args, **kwargs):
+        try:
+            return self.θ
+        except AttributeError:
+            return 1e-5 * np.ones(self.n_parameters)
+    
+    
+    def get_design_matrix(self, λ: Sequence[float], *args, **kwargs):
         """
         Get the design matrix for the given observed wavelengths.
         
-        :param λ_observed_vacuum:
+        :param λ:
             The observed vacuum wavelengths to compute this design matrix for.
         
         :param stellar_v_rel: [optional]
@@ -316,80 +354,49 @@ class NMFSpectralBasis(LinearBasis):
             the basis vector file, or infinity if the input spectral resolution is
             not stored in that file.
         """
-        
-        use_convolution = (Ro is not None)
-            
+                    
         # shift this model to the stellar frame, then interpolate to the observed points
-        λ_stellar_vacuum = apply_relativistic_velocity_shift(self.λ_rest_vacuum, stellar_v_rel or 0)
+        λ_shift_vacuum = apply_relativistic_velocity_shift(self.λ_rest_vacuum, self.v_rel or 0)
         
-        if use_convolution:
-            Ri = Ri or self.meta.get("Ri", np.inf)
-            if Ro > Ri:
-                raise ValueError("The output spectral resolution must be lower than the input spectral resolution.")
-            
+        if self.Ro is not None: # Do convolution            
             # The input wavelengths are vacuum stellar rest frame, and output are observed vacuum.
-            K_stellar = instrument_lsf_kernel(λ_stellar_vacuum, λ_observed_vacuum, Ro, Ri)
-            stellar_basis_vectors = self.stellar_basis_vectors @ K_stellar
-
-            if self.telluric_basis_vectors is not None:
-                if stellar_v_rel == telluric_v_rel:
-                    # Special (improbable) case where the stellar and telluric velocities are the same.
-                    K_telluric = K_stellar
-                else:
-                    K_telluric = instrument_lsf_kernel(
-                        apply_relativistic_velocity_shift(self.λ_rest_vacuum, telluric_v_rel or 0),
-                        λ_observed_vacuum,
-                        Ro,
-                        Ri
-                    )
-                telluric_basis_vectors = self.telluric_basis_vectors @ K_telluric
-            else:
-                telluric_basis_vectors = np.empty((0, λ_observed_vacuum.size))
-            
+            kernel = kwargs.pop("kernel", None)
+            if kernel is None:
+                kernel = instrument_lsf_kernel(λ_shift_vacuum, λ, self.Ro, self.Ri or np.inf)
+            A = self.basis_vectors @ kernel                
         else:        
             # Interpolation only.            
-            stellar_basis_vectors = _interpolate_basis_vector(λ_observed_vacuum, λ_stellar_vacuum, self.stellar_basis_vectors)            
-            if self.telluric_basis_vectors is not None:                
-                telluric_basis_vectors = _interpolate_basis_vector(
-                    λ_observed_vacuum, 
-                    apply_relativistic_velocity_shift(self.λ_rest_vacuum, telluric_v_rel or 0),
-                    self.telluric_basis_vectors
-                )
-            else:
-                telluric_basis_vectors = np.empty((0, λ_observed_vacuum.size))
-    
-        A = np.vstack([stellar_basis_vectors, telluric_basis_vectors]).T
+            A = _interpolate_basis_vector(λ, λ_shift_vacuum, self.basis_vectors)
+                
+        if self.mask_regions is not None:
+            # We don't model things in the mask region.
+            for lower, upper in self.mask_regions:
+                A[(λ >= lower) * (λ <= upper)] = 0
+        
+        if self.taper_region is not None:
+            lower, upper, scale = self.taper_region
+            
+            si, ei = λ.searchsorted([lower, upper]) + [0, 1]
+            xi = λ[si:ei]
+            yi = np.ones_like(xi)
+            lhs = stats.norm.pdf(xi[:xi.size // 2], lower, scale)
+            yi[:xi.size // 2] = lhs / lhs[0]
+            rhs = stats.norm.pdf(xi[xi.size // 2:], upper, scale)
+            yi[xi.size // 2:] = rhs / rhs[-1]
+            A[si:ei] *= yi[:, None]
         return A
 
 
-    @classmethod
-    def from_path(cls, path):
-        """
-        Load a model from disk.
-        
-        :param path:
-            The path to the saved model.
-        """
-        with h5.File(expand_path(path), "r") as fp:
-            λ_vacuum = fp["vacuum_wavelength"][:]
-            stellar_basis_vectors = fp["stellar_basis_vectors"][:]
-            meta = dict(fp["stellar_basis_vectors"].attrs)       
-            try:
-                telluric_basis_vectors = fp["telluric_basis_vectors"][:]
-            except:
-                telluric_basis_vectors = None
-                
-        return cls(
-            λ_vacuum,
-            stellar_basis_vectors,
-            telluric_basis_vectors=telluric_basis_vectors,
-            meta=meta,            
-        )
+    def __call__(self, λ, θ, **kwargs):
+        A = kwargs.get("A", None)
+        if A is None:
+            A = self.get_design_matrix(λ)        
+        return 1 - np.dot(A, θ)
     
     
     
 def _interpolate_basis_vector(λ_output, λ_input, basis_vectors, left=0, right=0):
-    bv = np.zeros((basis_vectors.shape[0], λ_output.size))
-    for c, basis_vector in enumerate(basis_vectors):
-        bv[c] = np.interp(λ_output, λ_input, basis_vector, left=left, right=right)
+    bv = np.zeros((λ_output.size, basis_vectors.shape[1]))
+    for c, basis_vector in enumerate(basis_vectors.T):
+        bv[:, c] = np.interp(λ_output, λ_input, basis_vector, left=left, right=right)
     return bv    

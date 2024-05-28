@@ -24,5 +24,25 @@ def expand_paths(input_paths):
 
 
 def overlap(A, B):
-    # get range of values in A and B that overlap
-    return (np.max([A[0], B[0]]), np.min([A[-1], B[-1]]))
+    # get range of values in A and B that overlap    
+    return (
+        np.max([np.min(A), np.min(B)]), 
+        np.min([np.max(A), np.max(B)])
+    )
+
+
+    
+def to_contiguous_regions(mask):
+    v = np.diff(mask.astype(int))
+    indices = np.hstack([
+        0, 
+        np.repeat(1 + np.where(v != 0)[0], 2),
+        len(mask)
+    ])
+            
+    indices = indices.reshape((-1, 2))
+    if indices.size > 0:
+        offset = 0 if mask[0] else 1
+        return indices[offset::2]
+    return indices
+        

@@ -19,7 +19,7 @@ class GaussianProfile(Profile):
     
     
     def get_initial_guess(self, λ, flux, ivar):        
-        return [self.λ, 0.05, 0.2]
+        return [self.λ, 0.05, 0.1]
                 
     def get_bounds(self, σ_max=0.1, amplitude_max=1, **kwargs): #TODO: Put these to __init__ instead
         return [
@@ -50,12 +50,12 @@ class VoigtProfile(Profile):
     def get_initial_guess(self, λ, flux, ivar):
         return [self.λ, 0.1, 0, 0.2] # mu, sigma, gamma, amplitude
     
-    def get_bounds(self, **kwargs):
+    def get_bounds(self, σ_max=0.1, amplitude_max=1, **kwargs):
         return [
             (self.λ - self.λ_tolerance, self.λ + self.λ_tolerance),
-            (0, np.inf),    # sigma
+            (0, σ_max),    # sigma
             (0, np.inf),    # gamma
-            (0, 1)          # amplitude
+            (0, amplitude_max)          # amplitude
         ]
     
     def __call__(self, λ, μ, σ, γ, amplitude, *args, **kwargs):
