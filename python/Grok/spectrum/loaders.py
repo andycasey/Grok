@@ -4,8 +4,8 @@ from hashlib import md5
 from specutils.io.registers import data_loader
 from specutils.io.parsing_utils import read_fileobj_or_hdulist
 
-from Grok.specutils.spectrum import (Spectrum, SpectrumCollection)
-from Grok.specutils.utils import (
+from Grok.spectrum.spectrum import (Spectrum, SpectrumCollection)
+from Grok.spectrum.utils import (
     concatenate_wat_headers, compute_linear_dispersion, compute_dispersion, sigma_to_ivar, get_meta_dict
 )
 
@@ -144,11 +144,11 @@ def multispec(path, **kwargs):
         else:
             transform = lambda x: x
             
-        flux = hdulist[0].data[bandid_flux - 1]
+        flux = hdulist[0].data[bandid_flux + 1] # offset primary hdu
         if bandid_noise is None:
             ivar = np.ones_like(flux)
         else:
-            ivar = transform(hdulist[0].data[bandid_noise - 1])
+            ivar = transform(hdulist[0].data[bandid_noise + 1])
         
         meta = get_meta_dict(hdulist)
             

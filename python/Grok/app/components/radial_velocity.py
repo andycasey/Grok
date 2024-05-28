@@ -13,7 +13,7 @@ from ..view.gallery_interface import SeparatorWidget
 from .analysis import AnalysisWidget
 from .plot import SinglePlotWidget
 
-from Grok.specutils import Spectrum1D, continuum, rv 
+from Grok.spectrum import Spectrum as Spectrum1D, continuum, rv 
 
 def _parse_wavelength_range(text):
     return tuple(map(float, map(str.strip, text.strip("Å").split("-"))))

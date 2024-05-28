@@ -4,11 +4,9 @@ from typing import Union, Sequence, Type, Optional
 from functools import cached_property
 
 from Grok.utils import expand_path
-from Grok.specutils import Spectrum, SpectrumCollection
+from Grok.spectrum import Spectrum, SpectrumCollection
 from Grok.synthesis import BaseKorg, Korg
-from astropy.constants import c
 
-C_KM_S = c.to("km/s").value
 
 class Session:
     
@@ -99,11 +97,14 @@ def _read_spectra(input_paths):
     for path in input_paths:
         for kind in (Spectrum, SpectrumCollection):
             try:
-                spectra.append(kind.read(expand_path(path)))
+                spectrum = kind.read(expand_path(path))
+                n = spectrum.flux.shape[0] if isinstance(spectrum, SpectrumCollection) else 1                
+                spectra.append(spectrum)
+                n_orders_per_spectrum.append(n)                
             except:
-                pass
+                continue
             else:
                 break
         else:
             raise ValueError(f"Could not read {path}")
-    return (spectra, n_orders_per_spectrum)
+    return (spectra, tuple(n_orders_per_spectrum))

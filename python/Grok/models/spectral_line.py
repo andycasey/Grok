@@ -7,7 +7,7 @@ from typing import Optional, Dict, Sequence, Union
 
 from Grok.models.basis import LinearBasis, RadialBasis, PolynomialBasis
 from Grok.models.profile import Profile, GaussianProfile
-from Grok.specutils.utils import ivar_to_sigma
+from Grok.spectrum.utils import ivar_to_sigma
 
 
 class SpectralLineModel:

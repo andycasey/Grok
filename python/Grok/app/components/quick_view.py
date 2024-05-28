@@ -26,15 +26,17 @@ class QuickViewWidget(AnalysisWidget):
         
         line, = plotter.ax.plot([], [])
         
-        S = len(session.spectra)
+        S = sum(session.n_orders_per_spectrum)
         
         def update_canvas(index):
             nonlocal current_index
             if index < 0 or index > (S - 1):
                 return
-            wavelength, flux, ivar, meta = session.spectra[index]
-            line.set_data(wavelength, flux)
-            plotter.ax.set_xlim(wavelength[[0, -1]])
+            
+            λ, flux, *_ = session.get_spectral_order(index)
+            
+            line.set_data(λ, flux)
+            plotter.ax.set_xlim(λ[[0, -1]])
             ylims = (np.nanmin(flux), np.nanmax(flux))
             edge = 0.05 * np.ptp(ylims)
             ylims = [ylims[0] - edge, ylims[1] + edge]
@@ -48,8 +50,6 @@ class QuickViewWidget(AnalysisWidget):
             plotter.action_left.setEnabled(current_index > 0)
             plotter.action_right.setEnabled(current_index < (S - 1))
             plotter.canvas.setFocus()
-            # set a new nav stack so that when the user pans around on THIS order, the 'home'
-            # button will take them to the original view for THIS order, not all orders
             plotter.reset_current_as_home()
                         
         plotter.action_left.triggered.connect(lambda: update_canvas(current_index - 1))
@@ -58,17 +58,6 @@ class QuickViewWidget(AnalysisWidget):
         update_canvas(current_index)
 
         layout.addWidget(plotter)                
-        
-        '''
-        self.button_do_not_rectify = PushButton("No continuum normalization")
-        self.button_rectify = PrimaryPushButton("Continuum normalize all spectra")
-        
-        self.button_do_not_rectify.clicked.connect(self.button_do_not_rectify_clicked)
-        self.button_rectify.clicked.connect(self.button_rectify_clicked)
-        self.bottomLayout.addWidget(self.button_do_not_rectify)
-        self.bottomLayout.addStretch(1)
-        self.bottomLayout.addWidget(self.button_rectify)
-        '''
         
         self.widget.setParent(self.card)
         self.widget.show()
@@ -83,21 +72,3 @@ class QuickViewWidget(AnalysisWidget):
         if self.callback is not None:
             self.callback()
             
-
-
-    
-'''
-if __name__ == '__main__':
-    # enable dpi scale
-    import sys
-    from Qt import QtCore
-    QtCore.QApplication.setHighDpiScaleFactorRoundingPolicy(QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
-    QtCore.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
-    QtCore.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps)
-
-    app = QtCore.QApplication(sys.argv)
-    w = QuickViewWidget()
-    w.resize(600, 600)
-    w.show()
-    app.exec_()    
-'''    

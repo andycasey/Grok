@@ -5,7 +5,7 @@ from types import MappingProxyType
 from typing import Sequence, Dict, Union, Optional, Tuple
 
 from Grok.models.basis import LinearBasis
-from Grok.specutils.utils import ivar_to_sigma
+from Grok.spectrum.utils import ivar_to_sigma
 from Grok.utils import overlap
 
 class LinearStellarSpectrumModel:

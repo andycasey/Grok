@@ -7,8 +7,8 @@ from types import MappingProxyType
 from functools import cached_property
 import warnings
 
-from Grok.specutils.lsf import instrument_lsf_kernel
-from Grok.specutils.utils import apply_relativistic_velocity_shift
+from Grok.spectrum.lsf import instrument_lsf_kernel
+from Grok.spectrum.utils import apply_relativistic_velocity_shift
 from Grok.utils import expand_path
 
 __all__ = ['LinearBasis', 'FourierBasis', 'PolynomialBasis', 'RadialBasis']

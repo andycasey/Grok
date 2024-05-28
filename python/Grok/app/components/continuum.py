@@ -9,7 +9,7 @@ from qfluentwidgets import PrimaryPushButton, PushButton, StrongBodyLabel, Combo
 from .analysis import AnalysisWidget
 from .plot import BasePlotWidget
 
-from Grok.specutils import continuum
+from Grok.spectrum import continuum
 
 
 class ContinuumRectificationWidget(AnalysisWidget):

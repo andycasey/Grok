@@ -4,10 +4,8 @@ from typing import Sequence, Optional, Union
 from astropy.nddata import NDIOMixin
 from astropy import units as u
 from specutils.utils.wcs_utils import air_to_vac
-from Grok.specutils.utils import apply_relativistic_velocity_shift
 
-# TODO: put elsewhere
-
+from Grok.spectrum.utils import apply_relativistic_velocity_shift
 
 class Spectrum(NDIOMixin):
     
@@ -57,7 +55,7 @@ class Spectrum(NDIOMixin):
     def λ_vacuum(self):
         if self.vacuum:
             return self.λ
-        else:            
+        else:
             return air_to_vac(self.λ << u.Angstrom).value
 
     @property
