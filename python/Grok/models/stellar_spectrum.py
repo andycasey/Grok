@@ -1,6 +1,7 @@
 
 import numpy as np
 from scipy import optimize as op
+from itertools import accumulate, cycle
 from types import MappingProxyType
 from typing import Sequence, Dict, Union, Optional, Tuple
 
@@ -8,31 +9,43 @@ from Grok.models.basis import LinearBasis
 from Grok.spectrum.utils import ivar_to_sigma
 from Grok.utils import overlap
 
-class LinearStellarSpectrumModel:
+from Grok.spectrum import Spectrum, SpectrumCollection
+
+class Model:
+    ...
     
-    """Model a stellar spectrum as a (nearly) linear combination of basis spectra."""
+
+class LinearStellarSpectrumModel(Model):
     
     def __init__(
         self,
-        bases: Dict[str, LinearBasis],
+        stellar_basis: LinearBasis, 
+        telluric_basis: Optional[LinearBasis] = None,
+        continuum_basis: Optional[LinearBasis] = None,
         mask_regions: Optional[Sequence[Tuple[float, float]]] = None,
     ):
         """
         Model a stellar spectrum as a (nearly) linear combination of basis spectra.
         
-        :param bases:
-            A dictionary of linear bases. The keys are the names of the dictionary. This can include
-            things like absorption spectra, telluric features, and continuum bases.
+        :param stellar_basis:
+            The basis for the stellar spectrum.
+        
+        :param telluric_basis: [optional]
+            The basis for the telluric spectrum.
+            
+        :param continuum_basis: [optional]
+            The basis for the continuum.
         """
-        self.bases = MappingProxyType(dict([(k, v) for k, v in bases.items() if v is not None]))
+        
+        self.bases = MappingProxyType(dict([
+            (k, v) for k, v in [
+                ("stellar", stellar_basis),
+                ("telluric", telluric_basis),
+                ("continuum", continuum_basis)
+            ] if v is not None        
+        ]))
         self.mask_regions = mask_regions
         return None
-    
-    
-    @property
-    def n_parameters(self):
-        """The total number of model parameters."""
-        return sum(tuple(base.n_parameters for base in self.bases.values()))
     
     def get_mask(self, λ):
         """
@@ -46,106 +59,292 @@ class LinearStellarSpectrumModel:
             for region in self.mask_regions:
                 mask |= (region[1] >= λ) & (λ >= region[0])
         return mask
-    
-    def get_bounds(self):
-        return np.vstack([base.get_bounds() for base in self.bases.values()])
-    
-    def get_initial_guess(self, *args, **kwargs):
-        p0 = []
-        for base in self.bases.values():
-            p0.extend(base.get_initial_guess(*args, **kwargs))
-        return p0
-    
-    def prepare_fit(self, spectrum, **kwargs):
-        """
-        Given a spectrum and a window to fit around, prepare the data and design matrices.
-        
-        :param spectrum:
-            The spectrum to fit.
             
-        :param window:
-            The window to fit around the central wavelength. The full fitting domain is twice this window.
-        """
-        
-        print("Change this to allow for `spectra`, not just `spectrum`.")
-        
-        # Get the data.
-        λ_min, λ_max = overlap(self.bases["stellar"].λ_rest_vacuum, spectrum.λ_rest_vacuum)
-        si, ei = spectrum.λ_rest_vacuum.searchsorted([λ_min, λ_max]) + [0, 1]        
-        λ, flux, ivar = (spectrum.λ_rest_vacuum[si:ei], spectrum.flux[si:ei], spectrum.ivar[si:ei])
     
-        use = ~self.get_mask(λ)
-            
-        # Build design matrices and get bounds.
-        p0, bounds, As = ([], [], [])
-        for name, base in self.bases.items():
-            A = base.get_design_matrix(λ[use], **kwargs)
-            As.append(A)
-            p0.extend(base.get_initial_guess(λ[use], flux[use], ivar[use]))
-            bounds.extend(base.get_bounds())
-                        
-        return (λ, flux, ivar, use, As, bounds, p0)        
+    def prepare_spectra(self, spectra):
+        if isinstance(spectra, Spectrum):
+            spectra = [spectra]
 
-    
-    def fit(self, spectrum, p0: Optional[Sequence[float]] = None, **kwargs):
-        """
-        Fit a linear stellar spectrum model to the given data.
+        S = len([s.flux.shape[0] if isinstance(s, SpectrumCollection) else 1 for s in spectra])
+        P = sum(tuple(map(len, spectra)))
         
-        :param spectrum:
-            The spectrum to fit.
-        
-        """
-        
-        (λ, flux, ivar, use, As, bounds, x0) = self.prepare_fit(spectrum, **kwargs)
+        λ, flux, ivar, oi = (np.empty(P), np.empty(P), np.empty(P), np.empty(P, dtype=int))
 
-        if p0 is None:
-            p0 = x0
-                    
-        def f(λ, *θ, full_output=False):
-            si, y = (0, 1)
-            y_bases = {}
-            for A, (name, base) in zip(As, self.bases.items()):
-                y_bases[name] = base(λ, θ[si:si+A.shape[1]], A=A)
-                y *= y_bases[name]
-                si += A.shape[1]
+        i, si = (0, 0)
+        for spectrum in spectra:
+            if isinstance(spectrum, SpectrumCollection):
+                for j in range(spectrum.flux.shape[0]):
+                    sliced = slice(si, si + spectrum.λ[j].size)
+                    oi[sliced] = i
+                    λ[sliced] = spectrum.λ_rest_vacuum[j]
+                    flux[sliced] = spectrum.flux[j]
+                    ivar[sliced] = spectrum.ivar[j]
+                    si += spectrum.λ[j].size
+                    i += 1
+            else:
+                sliced = slice(si, si + spectrum.λ.size)
+                oi[sliced] = i
+                λ[sliced] = spectrum.λ_rest_vacuum
+                flux[sliced] = spectrum.flux
+                ivar[sliced] = spectrum.ivar
+                si += spectrum.λ.size
+                i += 1                
+
+        pi = np.argsort(λ) # pixel indices
+        λ, flux, ivar, oi = (λ[pi], flux[pi], ivar[pi], oi[pi])
+        
+        zero_out_bad_pixels(flux, ivar)
+        mask = ~self.get_mask(λ)
+        
+        return (λ, flux, ivar, mask, oi, pi, S)
+    
+    
+    def prepare_data_arrays(self, λ, flux, ivar: Optional[Sequence[float]]):
+        λ = np.atleast_1d(λ).flatten()
+        flux = np.atleast_1d(flux).flatten()
+        if ivar is None:
+            ivar = np.ones_like(flux)
+        else:
+            ivar = np.atleast_1d(ivar).flatten()
+        oi = np.zeros_like(λ, dtype=int)
+        pi = np.argsort(λ)
+        λ, flux, ivar, oi = (λ[pi], flux[pi], ivar[pi], oi[pi])
+        zero_out_bad_pixels(flux, ivar)        
+        P = λ.size        
+        mask = ~self.get_mask(λ)
+        return (λ, flux, ivar, mask, oi, pi, 1)        
+    
+    
+    def _fit(
+        self, 
+        λ: Sequence[float], 
+        flux: Sequence[float],
+        ivar: Optional[Sequence[float]] = None,
+        x0: Optional[Sequence[float]] = None,
+        **kwargs
+    ):
+        """
+        Fit the model to the given data, assuming it is a single spectrum order.
+        
+        :param λ:
+            The rest vacuum wavelengths of the spectrum.
+        
+        :param flux:
+            The flux of the spectrum.
+        
+        :param ivar: [optional]
+            The inverse variance of the spectrum.
             
-            if full_output:
-                return (y, y_bases)
-            return y
+        :param x0: [optional]
+            The initial guess for the model parameters.
+        """
+
+        (λ, flux, ivar, mask, oi, pi, S) = (*args, pi, S) = self.prepare_data_arrays(λ, flux, ivar)
+        
+        f, g, p0 = self.get_forward_model_and_initial_guess(*args, x0)
 
         self.θ, self.Σ = op.curve_fit(
             f,
-            λ[use],
-            flux[use],
+            λ[mask],
+            flux[mask],
             p0=p0,
-            sigma=ivar_to_sigma(ivar[use]),
-            bounds=np.array(bounds).T
+            jac=g,
+            sigma=ivar_to_sigma(ivar[mask]),
+            bounds=self.get_bounds(oi)
         )
+        y, rectified_stellar_flux, rectified_telluric_flux, continuum = self(λ, oi, *self.θ, full_output=True)                
         
-        # Assign fitted variables to the bases
-        si = 0
-        for A, base in zip(As, self.bases.values()):
-            n = A.shape[1]
-            base.θ = self.θ[si:si+n]
-            base.Σ = self.Σ[si:si+n, si:si+n]
-            si += n
-        
-        print("save most recent design matrices")
-        return self 
-    
+        return (λ, oi, y, rectified_stellar_flux, rectified_telluric_flux, continuum)
 
     
-    def __call__(self, λ, *θ, **kwargs):
+
+    def get_bounds(self, oi):
+        """
+        Get the bounds for the model parameters.
         
-        si, y = (0, 1)
-        y_bases = {}
-        for n, A, (name, base) in zip(n_parameters, As, self.bases.items()):
-            y_bases[name] = base(λ, θ[si:si+n], A=A)
-            y *= y_bases[name]                
-            si += n
+        :param oi:
+            The order indices: the index of the order in the spectrum.
+        """
         
-        return y
+        bounds = list(self.bases["stellar"].get_bounds())
         
+        if "telluric" in self.bases:
+            bounds.extend(self.bases["telluric"].get_bounds())
+        
+        if "continuum" in self.bases:         
+            continuum_basis = self.bases["continuum"]
+            if not isinstance(continuum_basis, (list, tuple)):
+                continuum_basis = [continuum_basis]
+            O = 1 + np.max(oi)
+            for o, base in zip(range(O), cycle(continuum_basis)):
+                bounds.extend(base.get_bounds())
+        
+        return np.array(bounds).T
+    
+    
+    def get_forward_model_and_initial_guess(self, λ, flux, ivar, mask, oi, p0: Optional[Sequence[float]] = None):
+        """
+        Get the forward model and initial guess for the model parameters.
+        
+        :param λ:
+            The rest vacuum wavelengths of the spectrum.
+        
+        :param flux:
+            The flux of the spectrum.
+        
+        :param ivar:
+            The inverse variance of the spectrum.
+        
+        :param mask:
+            The mask for the spectrum.
+        
+        :param oi:
+            A sequence of order indices: the index of the order in the spectrum.
+        
+        :param p0: [optional]
+            The initial guess for the model parameters.
+            
+        :returns:
+            A tuple of (f, g, p0), where f is the forward model, g is the Jacobian of the forward model, and p0
+            is the initial guess for the model parameters.
+        """
+        
+        x0 = list(self.bases["stellar"].get_initial_guess(λ[mask], flux[mask], ivar[mask]))    
+        A_stellar = self.bases["stellar"].get_design_matrix(λ[mask])
+        
+        # Tellurics
+        try:
+            telluric_basis = self.bases["telluric"]
+        except KeyError:
+            _A = -A_stellar
+        else:
+            A_telluric = telluric_basis.get_design_matrix(λ[mask])
+            _A = -np.hstack([A_stellar, A_telluric])
+            x0.extend(telluric_basis.get_initial_guess(λ[mask], flux[mask], ivar[mask]))
+
+        f, g = (None, None)
+            
+        # Continuum
+        try:
+            continuum_basis = self.bases["continuum"]
+        except KeyError:
+            # No continuum modelling.
+            
+            def f(λ, *θ, full_output=False):
+                if not full_output:
+                    return 1 + _A @ θ
+                else:
+                    rectified_stellar_flux = 1 + _A[:, :A_stellar.shape[1]] @ θ[:A_stellar.shape[1]]
+                    if "telluric" in self.bases:
+                        rectified_telluric_flux = 1 + _A[:, A_stellar.shape[1]:] @ θ[A_stellar.shape[1]:]
+                    else:
+                        rectified_telluric_flux = 1                    
+                    return (1 + _A @ θ, rectified_stellar_flux, rectified_telluric_flux, 1)
+            
+            def g(λ, *θ):
+                return _A
+
+            if p0 is None:
+                p0 = x0 
+            return (f, g, p0)                            
+        
+        else:
+            O = 1 + int(np.max(oi))
+            if isinstance(continuum_basis, (list, tuple)):
+                if len(continuum_basis) != O:
+                    raise ValueError(f"Continuum basis must be a list of length O ({len(continuum_basis)} != {O})")
+                n_continuum_parameters = sum(b.n_parameters for b in continuum_basis)
+            else:
+                n_continuum_parameters = continuum_basis.n_parameters * O
+                continuum_basis = [continuum_basis] * O
+                                
+            A_continuum = np.zeros((λ.size, n_continuum_parameters))
+            si, order_masks = (0, [])
+            for o, base in enumerate(continuum_basis):
+                no = base.n_parameters
+                order_mask = (oi == o) * mask
+                order_masks.append(order_mask)
+                A_order = base.get_design_matrix(λ[order_mask])
+                A_continuum[order_mask, si:si+no] = A_order
+                si += no
+                if p0 is None:
+                    x0.extend(base.get_initial_guess(λ[order_mask], flux[order_mask], ivar[order_mask], A=A_order))
+            
+            n = _A.shape[1]
+                                    
+            def f(λ, *θ, full_output=False):
+                y = (1 + _A @ θ[:n]) * (A_continuum @ θ[n:])                      
+                if not full_output:
+                    return y
+                else:
+                    rectified_stellar_flux = 1 + _A[:, :A_stellar.shape[1]] @ θ[:A_stellar.shape[1]]
+                    if "telluric" in self.bases:
+                        rectified_telluric_flux = 1 + _A[:, A_stellar.shape[1]:] @ θ[A_stellar.shape[1]:A_stellar.shape[1] + A_telluric.shape[1]]
+                    else:
+                        rectified_telluric_flux = 1
+                    continuum = A_continuum @ θ[-A_continuum.shape[1]:]
+                    
+                    return (y, rectified_stellar_flux, rectified_telluric_flux, continuum)
+            
+            def g(λ, *θ):
+                return np.hstack([
+                    _A * (A_continuum @ θ[n:])[:, np.newaxis],
+                    (1 + _A @ θ[:n])[:, np.newaxis] * A_continuum
+                ])
+                
+            if p0 is None:
+                p0 = x0 
+            return (f, g, p0)
+
+        
+    def __call__(self, λ, oi, *θ, **kwargs):        
+        dummy = np.ones_like(λ)        
+        f, g, _ = self.get_forward_model_and_initial_guess(λ, dummy, dummy, dummy.astype(bool), oi, 1)
+        return f(λ, *θ, **kwargs)
+        
+    
+    def fit(self, spectra: Union[Spectrum, Sequence[Spectrum]], x0: Optional[Sequence[float]] = None, **kwargs):
+        """
+        Fit a sequence of spectra of the same star.
+        
+        :param spectra:
+            The spectra to fit.
+        
+        :param x0: [optional]
+            The initial guess for the model parameters.
+        """
+        
+        (λ, flux, ivar, mask, oi, *_) = (*args, pi, S) = self.prepare_spectra(spectra)                
+        f, g, p0 = self.get_forward_model_and_initial_guess(*args, x0)
+
+        self.θ, self.Σ = op.curve_fit(
+            f,
+            λ[mask],
+            flux[mask],
+            p0=p0,
+            jac=g,
+            sigma=ivar_to_sigma(ivar[mask]),
+            bounds=self.get_bounds(oi)
+        )
+                
+        y, rectified_stellar_flux, rectified_telluric_flux, continuum = self(λ, oi, *self.θ, full_output=True)                
+        
+        return (λ, oi, y, rectified_stellar_flux, rectified_telluric_flux, continuum)
+        """
+        fig, ax = plt.subplots()
+        for i in range(1 + np.max(oi)):
+            mask = (oi == i)            
+            ax.plot(λ[mask], flux[mask], c="k") 
+            ax.plot(λ[mask], (rectified_stellar_flux * continuum)[mask], c="r")
+            ax.plot(λ[mask], (rectified_telluric_flux * continuum)[mask], c="tab:blue")
+        """
+        
+
+def zero_out_bad_pixels(flux, ivar):
+    bad_pixel = (~np.isfinite(flux)) | (~np.isfinite(ivar)) | (flux <= 0)
+    ivar[bad_pixel] = 0
+    return None
+    
     
         
     
@@ -183,7 +382,7 @@ if __name__ == "__main__":
         return (lambdas / n) 
 
         
-    from Grok.specutils import Spectrum        
+    from Grok.spectrum import Spectrum        
     from Grok.models.basis import NMFSpectralBasis, PolynomialBasis, FourierBasis
     from Grok.models.profile import VoigtProfile
     from Grok.models.spectral_line import SpectralLineModel
@@ -193,9 +392,12 @@ if __name__ == "__main__":
     
     import h5py as h5
     with h5.File("Grok/bosz-highres-optical-basis-vectors.h5") as fp:
-        stellar_base = NMFSpectralBasis(fp["vacuum_wavelength"][:], fp["stellar_basis_vectors"][:].T)
+        foo = (fp["vacuum_wavelength"][:], fp["stellar_basis_vectors"][:].T)
+        stellar_base = NMFSpectralBasis(fp["vacuum_wavelength"][:], fp["stellar_basis_vectors"][:].T, Ro=27_000, Ri=80_000)
         telluric_base = NMFSpectralBasis(fp["vacuum_wavelength"][:], fp["telluric_basis_vectors"][:].T, v_rel=-5)
         
+
+
 
     ll = air_to_vacuum(np.loadtxt("/Users/andycasey/Downloads/pepsi_linelist.moog", usecols=(0, )))
     ll = air_to_vacuum(np.loadtxt("/Users/andycasey/Downloads/linelist_mm.txt", usecols=(0, )))
@@ -213,11 +415,11 @@ if __name__ == "__main__":
     
     bases = dict(
         stellar=stellar_base,
-        telluric=telluric_base,
-        #continuum=PolynomialBasis(0)
+        #telluric=telluric_base,
+        continuum=FourierBasis(5)
     )
     
-    model = LinearStellarSpectrumModel(bases, mask_regions=mask_regions)
+    model = LinearStellarSpectrumModel(bases)# mask_regions=mask_regions)
     
     λ_pred, (y_pred, y_bases) = model.fit(spectrum)
 

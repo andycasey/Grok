@@ -20,10 +20,9 @@ class LinearBasis:
     def get_bounds(self, bound=(-np.inf, np.inf)):
         return [bound] * self.n_parameters
         
-    def get_initial_guess(self, λ, flux, ivar=None):
-        try:
-            A = self.design_matrix
-        except AttributeError:            
+    def get_initial_guess(self, λ, flux, ivar=None, **kwargs):
+        A = kwargs.get("A", None)
+        if A is None:
             A = self.get_design_matrix(λ)
         
         if ivar is None:
@@ -363,7 +362,7 @@ class NMFSpectralBasis(LinearBasis):
             kernel = kwargs.pop("kernel", None)
             if kernel is None:
                 kernel = instrument_lsf_kernel(λ_shift_vacuum, λ, self.Ro, self.Ri or np.inf)
-            A = self.basis_vectors @ kernel                
+            A = (self.basis_vectors.T @ kernel).T
         else:        
             # Interpolation only.            
             A = _interpolate_basis_vector(λ, λ_shift_vacuum, self.basis_vectors)
