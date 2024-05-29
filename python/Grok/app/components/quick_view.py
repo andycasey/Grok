@@ -25,12 +25,10 @@ class QuickViewWidget(AnalysisWidget):
         current_index = 0
         
         line, = plotter.ax.plot([], [])
-        
-        S = sum(session.n_orders_per_spectrum)
-        
+                
         def update_canvas(index):
             nonlocal current_index
-            if index < 0 or index > (S - 1):
+            if index < 0 or index > (session.n_orders - 1):
                 return
             
             λ, flux, *_ = session.get_spectral_order(index)
@@ -48,7 +46,7 @@ class QuickViewWidget(AnalysisWidget):
             plotter.canvas.draw()
             current_index = index
             plotter.action_left.setEnabled(current_index > 0)
-            plotter.action_right.setEnabled(current_index < (S - 1))
+            plotter.action_right.setEnabled(current_index < (session.n_orders - 1))
             plotter.canvas.setFocus()
             plotter.reset_current_as_home()
                         

@@ -16,6 +16,7 @@ from ..view.gallery_interface import SeparatorWidget
 from .radial_velocity import RadialVelocityWidget
 from .continuum import ContinuumRectificationWidget
 from .curve_of_growth import StellarParametersCOGWidget
+from .linear_spectral_model import LinearSpectralModelWidget
 
 from astropy.io.fits import getval
 
@@ -90,6 +91,11 @@ class ToolBar(QWidget):
         action_add_radial_velocity_widget = QAction("Radial velocity", self)
         action_add_radial_velocity_widget.triggered.connect(lambda: self.add_analysis_widget(RadialVelocityWidget, action_add_radial_velocity_widget))                    
         self.analysisMenu.addAction(action_add_radial_velocity_widget)
+
+        action_add_quick_fit = QAction("Quick fit", self)
+        action_add_quick_fit.triggered.connect(lambda: self.add_analysis_widget(LinearSpectralModelWidget, action_add_quick_fit))        
+        self.analysisMenu.addAction(action_add_quick_fit)
+
         
         action_add_continuum_widget = QAction("Continuum", self)
         action_add_continuum_widget.triggered.connect(lambda: self.add_analysis_widget(ContinuumRectificationWidget, action_add_continuum_widget))        

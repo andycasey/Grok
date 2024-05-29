@@ -43,7 +43,8 @@ class BasePlotWidget(QWidget):
         toolbar=False,
         toolbar_left_right=True,
         toolbar_position="bottom",
-        resize_interval=50
+        resize_interval=50,
+        toolbar_minimum_width=300
     ):
         super().__init__(parent)
         self.parent = parent
@@ -67,8 +68,8 @@ class BasePlotWidget(QWidget):
         self._key_shortcuts = {}
         
         if toolbar:
-            toolbar = CommandBar(parent=self)
-            toolbar.setFocusPolicy(QtCore.Qt.NoFocus)
+            self.toolbar = CommandBar(parent=self)
+            self.toolbar.setFocusPolicy(QtCore.Qt.NoFocus)
             
             self.action_home = Action(FluentIcon.HOME, "Home", self)
             self.action_zoom = Action(FluentIcon.ZOOM, "Zoom", self)
@@ -79,9 +80,9 @@ class BasePlotWidget(QWidget):
             self.action_zoom.triggered.connect(self.zoom)
             self.action_pan.triggered.connect(self.pan)
 
-            toolbar.addAction(self.action_home)
-            toolbar.addAction(self.action_zoom)
-            toolbar.addAction(self.action_pan)
+            self.toolbar.addAction(self.action_home)
+            self.toolbar.addAction(self.action_zoom)
+            self.toolbar.addAction(self.action_pan)
         
             self._key_shortcuts.update({
                 "p": self.action_pan.trigger,
@@ -92,18 +93,24 @@ class BasePlotWidget(QWidget):
             if toolbar_left_right:
                 self.action_left = Action(FluentIcon.PAGE_LEFT, "Left", self)
                 self.action_right = Action(FluentIcon.PAGE_RIGHT, "Right", self)
-                toolbar.addSeparator()
-                toolbar.addAction(self.action_left)
-                toolbar.addAction(self.action_right)
+                self.toolbar.addSeparator()
+                self.toolbar.addAction(self.action_left)
+                self.toolbar.addAction(self.action_right)
                 self._key_shortcuts.update({
                     "left": self.action_left.trigger,
                     "right": self.action_right.trigger
                 })
 
+
+            self.toolbar.setMinimumWidth(toolbar_minimum_width)
+            self.toolbar_layout = QHBoxLayout(self)
+            self.toolbar_layout.addWidget(self.toolbar)
+            
             if toolbar_position == "bottom":
-                self.layout.addWidget(toolbar)
+                self.layout.addLayout(self.toolbar_layout)
+                
             elif toolbar_position == "top":
-                self.layout.insertWidget(0, toolbar)
+                self.layout.insertLayout(0, self.toolbar_layout)
         
             # necessary to enable panning/zoom    
             self._nav_stack = cbook._Stack()
@@ -116,28 +123,29 @@ class BasePlotWidget(QWidget):
             self._zoom_info = None
             self._last_cursor = tools.Cursors.POINTER
             self.mode = _Mode.NONE 
-            return None
         
         else:
             if toolbar_left_right:
                 # Only left/right, set to align in middle
                 toolbar = CommandBar(parent=self)
-                toolbar.setFocusPolicy(QtCore.Qt.NoFocus)
+                self.toolbar.setFocusPolicy(QtCore.Qt.NoFocus)
                 self.action_left = Action(FluentIcon.PAGE_LEFT, "Left", self)
                 self.action_right = Action(FluentIcon.PAGE_RIGHT, "Right", self)
-                toolbar.addAction(self.action_left)
-                toolbar.addAction(self.action_right)
-                self.layout.addWidget(toolbar, alignment=QtCore.Qt.AlignCenter)           
+                self.toolbar.addAction(self.action_left)
+                self.toolbar.addAction(self.action_right)
+                self.layout.addWidget(self.toolbar, alignment=QtCore.Qt.AlignCenter)           
                 self._key_shortcuts.update({
                     "left": self.action_left.trigger,
                     "right": self.action_right.trigger
                 })                
         
+        #elf.figure.toolbar.addWidget(self.action_fit_current_order)
         #if toolbar_position != "bottom":
         #    self.layout.addWidget(self.canvas)
             
         #self.installEventFilter(self)
-    
+        return None
+
 
     def reset_current_as_home(self):
         self._nav_stack = cbook._Stack()

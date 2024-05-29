@@ -174,7 +174,7 @@ class RadialVelocityWidget(AnalysisWidget):
         # Get the order closest to the wavelength range.
                 
         # Load the spectrum.
-        (wavelength, flux, ivar, *_) = self.session.get_spectrum(index, rest_frame=False, rectified=False)
+        (wavelength, flux, ivar, *_) = self.session.get_spectral_order(index)
 
         self.current_spectrum.update(
             wavelength=wavelength,
@@ -230,7 +230,7 @@ class RadialVelocityWidget(AnalysisWidget):
             
         self.template_spectrum = Spectrum1D.read(path)                
         self.template_path = path
-        self._plot_template.set_data(self.template_spectrum.wavelength, self.template_spectrum.flux)
+        self._plot_template.set_data(self.template_spectrum.λ, self.template_spectrum.flux)
 
         # Show a shortened version of the path
         if len(path) > max_label_length:
@@ -300,7 +300,7 @@ class RadialVelocityWidget(AnalysisWidget):
         v_rel, *_ = rv.measure_relative_velocity(
             self.current_spectrum["wavelength"],
             self.current_spectrum["flux"] / self.current_spectrum["continuum"],
-            self.template_spectrum.wavelength, self.template_spectrum.flux            
+            self.template_spectrum.λ, self.template_spectrum.flux            
         )
         self.v_rel.setText(f"{v_rel:.1f}")
         self.update_current_spectrum_plot()

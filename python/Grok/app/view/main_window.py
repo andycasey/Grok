@@ -103,10 +103,9 @@ class MainWindow(FluentWindow):
 
 
     def initWindow(self):
-        self.resize(960, 850)
+        self.resize(900, 1024)
         self.setMinimumWidth(780)        
         self.setWindowIcon(QIcon(':/gallery/images/logo.png'))   
-        print("A")
         with suppress_stderr():
             # Suppress the following warning:
             # > qt.qpa.fonts: Populating font family aliases took 338 ms. Replace uses of missing font family "Segoe UI" with one that exists to avoid this cost. 

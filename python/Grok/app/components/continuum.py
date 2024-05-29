@@ -141,11 +141,11 @@ class ContinuumRectificationWidget(AnalysisWidget):
     
     def update_canvas(self, index):
         #nonlocal current_index
-        S = len(self.session.spectra)
+        S = self.session.n_orders
         
         if index < 0 or index > (S - 1):
             return
-        wavelength, flux, ivar, meta = self.session.spectra[index]
+        wavelength, flux, ivar, meta = self.session.get_spectral_order(index)
         
         try:
             L = float(self.continuum_length_scale.text())

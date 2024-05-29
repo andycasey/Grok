@@ -25,6 +25,9 @@ class Session:
     def synthesis(self):
         return self._synthesis() if isinstance(self._synthesis, type) else self._synthesis
     
+    @cached_property
+    def n_orders(self):
+        return sum(self.n_orders_per_spectrum)
     
     def get_spectrum_indices(self, spectral_order):
         N = np.cumsum(self.n_orders_per_spectrum)
@@ -35,10 +38,11 @@ class Session:
         return (spectrum_index, order_index)
         
 
-    def get_spectral_order(self, spectral_order=0):
+    def get_spectral_order(self, spectral_order=0, λ_attr="λ_rest_vacuum"):
         spectrum_index, order_index = self.get_spectrum_indices(spectral_order)
         spectrum = self.spectra[spectrum_index]
-        λ, flux, ivar = (spectrum.λ, spectrum.flux, spectrum.ivar)
+        
+        λ, flux, ivar = (getattr(spectrum, λ_attr), spectrum.flux, spectrum.ivar)
         if order_index is not None:
             λ, flux, ivar = (λ[order_index], flux[order_index], ivar[order_index])
         return (λ, flux, ivar, spectrum.meta)            
@@ -46,8 +50,12 @@ class Session:
     
     def _get_closest_spectrum_index(self, wavelength):
         """Return the spectrum in the session closest to the wavelength."""
-        mean_wavelengths = [np.mean(wl) for wl, *_ in self.spectra]
-        return np.argmin(np.abs(np.array(mean_wavelengths) - wavelength))
+        #mean_wavelengths = [np.mean(wl) for wl, *_ in self.spectra]
+        #return np.argmin(np.abs(np.mean(mean_wavelengths) - wavelength))
+        return np.argmin(np.abs([np.mean(self.get_spectral_order(i)[0]) - wavelength for i in range(0, self.n_orders)]))
+        
+        
+    
 
             
     def get_spectrum(self, index=0, rest_frame=False, rectified=False, **kwargs):
