@@ -37,12 +37,7 @@ class Spectrum(NDIOMixin):
         self.continuum = continuum
         return None
     
-            
-    @property
-    def _relativistic_doppler_shift(self):
-        beta = (self.v_rel / C_KM_S)
-        return np.sqrt((1 + beta) / (1 - beta))
-    
+                
     @property
     def λ_rest(self):
         return apply_relativistic_velocity_shift(self.λ, self.v_rel)

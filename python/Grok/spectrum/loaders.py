@@ -144,19 +144,20 @@ def multispec(path, **kwargs):
         else:
             transform = lambda x: x
             
-        flux = hdulist[0].data[bandid_flux + 1] # offset primary hdu
+        flux = hdulist[0].data[bandid_flux] 
         if bandid_noise is None:
             ivar = np.ones_like(flux)
         else:
-            ivar = transform(hdulist[0].data[bandid_noise + 1])
+            ivar = transform(hdulist[0].data[bandid_noise])
         
         meta = get_meta_dict(hdulist)
             
     # Ensure λ maps from blue to red direction.
     if np.min(λ[0]) > np.min(λ[-1]):
-        λ = λ[::-1]
-        flux = flux[:, ::-1]
-        ivar = ivar[:, ::-1]
+        ordered = slice(None, None, -1)
+        λ = λ[ordered]
+        flux = flux[ordered]
+        ivar = ivar[ordered]
     
     return SpectrumCollection(
         λ=λ,
