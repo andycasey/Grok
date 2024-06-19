@@ -246,6 +246,9 @@ class LinearStellarSpectrumModel(Model):
 
             if p0 is None:
                 p0 = x0 
+            elif p0 is not Ellipsis:
+                p0 = list(p0)
+                p0.extend(x0[len(p0):])
             return (f, g, p0)                            
         
         else:
@@ -294,12 +297,15 @@ class LinearStellarSpectrumModel(Model):
                 
             if p0 is None:
                 p0 = x0 
+            elif p0 is not Ellipsis:
+                p0 = list(p0)
+                p0.extend(x0[len(p0):])                
             return (f, g, p0)
 
         
     def __call__(self, λ, oi, *θ, **kwargs):        
         dummy = np.ones_like(λ)        
-        f, g, _ = self.get_forward_model_and_initial_guess(λ, dummy, dummy, dummy.astype(bool), oi, 1)
+        f, g, _ = self.get_forward_model_and_initial_guess(λ, dummy, dummy, dummy.astype(bool), oi, ...)
         return f(λ, *θ, **kwargs)
         
     
@@ -316,7 +322,7 @@ class LinearStellarSpectrumModel(Model):
         
         (λ, flux, ivar, mask, oi, *_) = (*args, pi, S) = self.prepare_spectra(spectra)                
         f, g, p0 = self.get_forward_model_and_initial_guess(*args, x0)
-
+        
         self.θ, self.Σ = op.curve_fit(
             f,
             λ[mask],
