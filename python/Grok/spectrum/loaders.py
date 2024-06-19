@@ -1,3 +1,4 @@
+import os
 import re
 import numpy as np
 from hashlib import md5
@@ -9,18 +10,49 @@ from Grok.spectrum.utils import (
     concatenate_wat_headers, compute_linear_dispersion, compute_dispersion, sigma_to_ivar, get_meta_dict
 )
 
+"""
+A helpful note for the programmer:
+
+The naming of `Spectrum` and `SpectrumCollection` loosely follows the convention set by astropy.
+
+- Use `Spectrum` for a single one-dimensional spectrum.
+- Use `SpectrumCollection` for a collection of one-dimensional spectra that have the same flux shape
+  (e.g., echelle orders are often the same shape because they have the same pixels per echelle order,
+  even if the wavelength per order is different).
+
+- Use `SpectrumList` for a collection of one-dimensional spectra that have different flux shapes.
+
+** `SpectrumList` is not yet implemented yet **
+"""
+
 
 # Identifiers
+def path_given_and_does_not_match(args, pattern):    
+    path = args[0]
+    return (
+        isinstance(path, (str, os.PathLike))
+        and 
+        (re.match(pattern, os.path.basename(path)) is None)
+    )
+
+def _get_instrument(*args, **kwargs):
+    with read_fileobj_or_hdulist(*args, **kwargs) as hdulist:
+        foo = hdulist[0].header.get("INSTRUME", None)
+        print(f"foo = {foo}")
+        return foo
+
 
 def identify_multispec(origin, *args, **kwargs):
+    if path_given_and_does_not_match(args, ".+\.fits$"):
+        return False
+    
     with read_fileobj_or_hdulist(*args, memmap=False, **kwargs) as hdulist:
         ctype1 = hdulist[0].header["CTYPE1"].lower()
         wat0_001 = hdulist[0].header["WAT0_001"].lower()
         return (ctype1.startswith("multispe") or wat0_001 == "system=multispec")
     
 def identify_pepsi_spectrum(origin, *args, **kwargs):
-    with read_fileobj_or_hdulist(*args, memmap=False, **kwargs) as hdulist:
-        return hdulist[0].header.get("INSTRUME") == "PEPSI"
+    return _get_instrument(*args, **kwargs) == "PEPSI"
 
 def identify_generic_spectrum(origin, *args, **kwargs):
     with read_fileobj_or_hdulist(*args, memmap=False, **kwargs) as hdulist:
@@ -30,7 +62,19 @@ def identify_generic_spectrum(origin, *args, **kwargs):
         and hdulist[0].header.get("CDELT1", None) is not None
         and hdulist[0].data is not None
         )
+
+# This code snippet is a part of the `identify_harps_spectrum` function.
+def identify_harps_spectrum(origin, *args, **kwargs):
+    if path_given_and_does_not_match(args, "^ADP"):
+        return False
         
+    return _get_instrument(*args, **kwargs) == "HARPS"
+
+def identify_neid_spectrum(origin, *args, **kwargs):
+    if path_given_and_does_not_match(args, ".+\.fits$"):
+        return False        
+    return _get_instrument(*args, **kwargs) == "NEID"
+
 # Loaders
 
 @data_loader(
@@ -166,3 +210,47 @@ def multispec(path, **kwargs):
         meta=meta,
         vacuum=kwargs.get("vacuum", False)
     )    
+
+
+@data_loader(
+    "HARPS",
+    dtype=Spectrum,
+    identifier=identify_harps_spectrum,
+    extensions=["fits", "fits.gz"]
+)
+def harps(path, **kwargs):
+
+    with read_fileobj_or_hdulist(path, **kwargs) as hdulist:        
+        λ = hdulist[1].data["WAVE"][0]
+        flux = hdulist[1].data["FLUX"][0]
+        e_flux = hdulist[1].data["ERR"][0]
+        if not np.any(np.isfinite(e_flux)):        
+            ivar = np.ones_like(flux)
+        else:
+            ivar = sigma_to_ivar(e_flux)
+        
+        meta = get_meta_dict(hdulist)
+    
+    return Spectrum(
+        λ=λ,
+        flux=flux,
+        ivar=ivar,
+        meta=meta,
+        vacuum=kwargs.get("vacuum", False)
+    )        
+
+@data_loader(
+    "NEID",
+    dtype=SpectrumCollection,
+    identifier=identify_neid_spectrum,
+    extensions=["fits"]
+)
+def neid(path, **kwargs):
+    with read_fileobj_or_hdulist(path, **kwargs) as hdulist:    
+        return SpectrumCollection(
+            λ=hdulist[7].data,
+            flux=hdulist[1].data,
+            ivar=1.0/hdulist[4].data,
+            meta=get_meta_dict(hdulist),
+            vacuum=kwargs.get("vacuum", False)
+        )

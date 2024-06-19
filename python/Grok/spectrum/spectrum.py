@@ -82,3 +82,5 @@ class Spectrum(NDIOMixin):
 
 class SpectrumCollection(Spectrum):
     pass
+
+
