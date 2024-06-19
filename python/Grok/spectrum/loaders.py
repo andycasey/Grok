@@ -252,5 +252,5 @@ def neid(path, **kwargs):
             flux=hdulist[1].data,
             ivar=1.0/hdulist[4].data,
             meta=get_meta_dict(hdulist),
-            vacuum=kwargs.get("vacuum", False)
+            vacuum=True, # THANK FUCK: NEID spectra are in vacuum wavelengths
         )
